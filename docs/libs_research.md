@@ -2,7 +2,10 @@ These are libs that we find interesting and potentially useful for the project.
 
 # Web
 - an fast and easy web server framework:
-https://github.com/seanmonstar/warp
+https://crates.io/crates/warp
+
+- yet easier and more flexible one:
+https://crates.io/crates/axum
 
 # Kafka
 - Rust wrapper around C/C++ librdkafka (supported, feature-rich)
