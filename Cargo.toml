@@ -9,6 +9,10 @@ repository = "https://github.com/wprzytula/allezone"
 [dependencies]
 
 # Network utilities
+# axum = "0.6"
+reqwest = "0.11"
+# serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 # byteorder = "1.4"
 # bytes = "1.4"
 # num_enum = "0.5"
@@ -16,7 +20,7 @@ repository = "https://github.com/wprzytula/allezone"
 # url = { version = "2.3.1", optional = true }
 
 # Tokio
-# tokio = { version = "1.27.0", features = ["full"] }
+tokio = { version = "1.27.0", features = ["full"] }
 # futures = "0.3.28"
 
 # Scylla
@@ -28,6 +32,12 @@ repository = "https://github.com/wprzytula/allezone"
 
 # Errors
 # anyhow = "1.0.70" # use this for weakly-typed errors
+
+# Date and Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Monad!
+either = "1.8"
 
 # To be considered
 # rand = "0.8.3"
