@@ -1,7 +1,10 @@
-use std::collections::{BTreeMap, BinaryHeap};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, BinaryHeap},
+};
 
 use chrono::{DateTime, Timelike, Utc};
-use either::Either;
+use serde::{Deserialize, Serialize};
 
 use crate::types::{Action, UserTag, UtcMinute};
 
@@ -13,76 +16,24 @@ pub struct System {
     tags_by_timestamp: BTreeMap<DateTime<Utc>, Vec<UserTag>>,
 
     // For 2nd use case - user profiles.
-    tags_by_cookie: BTreeMap<String, UserProfile>,
+    tags_by_cookie: BTreeMap<String, UserProfileInner>,
 }
 
-#[derive(Debug)]
-struct UserProfile {
-    views: BinaryHeap<UserTagByTime>,
-    buys: BinaryHeap<UserTagByTime>,
+#[derive(Clone, Debug, Serialize)]
+struct UserProfileInner {
+    cookie: String,
+    views: BinaryHeap<Reverse<UserTagByTime>>,
+    buys: BinaryHeap<Reverse<UserTagByTime>>,
 }
 
-impl UserProfile {
-    fn iter<'a>(
-        &'a self,
-    ) -> UserProfileIter<impl Iterator<Item = &'a UserTag>, impl Iterator<Item = &'a UserTag>> {
-        UserProfileIter {
-            views: self.views.iter().map(|tag_by_time| &tag_by_time.0),
-            buys: self
-                .buys
-                .iter()
-                .map(|tag_by_time: &UserTagByTime| &tag_by_time.0),
-        }
-    }
+#[derive(Debug, Serialize)]
+pub struct UserProfile {
+    pub cookie: String,
+    pub views: Vec<UserTag>,
+    pub buys: Vec<UserTag>,
 }
 
-pub struct UserProfileIter<'a, It1, It2>
-where
-    It1: Iterator<Item = &'a UserTag>,
-    It2: Iterator<Item = &'a UserTag>,
-{
-    views: It1,
-    buys: It2,
-}
-
-impl<'a, It1, It2> UserProfileIter<'a, It1, It2>
-where
-    It1: Iterator<Item = &'a UserTag>,
-    It2: Iterator<Item = &'a UserTag>,
-{
-    fn either_right<It: Iterator<Item = &'a UserTag>>(
-        self,
-    ) -> UserProfileIter<'a, Either<It, It1>, Either<It, It2>> {
-        UserProfileIter {
-            views: Either::Right(self.views),
-            buys: Either::Right(self.buys),
-        }
-    }
-}
-
-impl<'a> UserProfileIter<'a, std::iter::Empty<&'a UserTag>, std::iter::Empty<&'a UserTag>> {
-    fn new_empty() -> Self {
-        Self {
-            views: std::iter::empty(),
-            buys: std::iter::empty(),
-        }
-    }
-
-    fn either_left<It1: Iterator<Item = &'a UserTag>, It2: Iterator<Item = &'a UserTag>>(
-        self,
-    ) -> UserProfileIter<
-        'a,
-        Either<std::iter::Empty<&'a UserTag>, It1>,
-        Either<std::iter::Empty<&'a UserTag>, It2>,
-    > {
-        UserProfileIter {
-            views: Either::Left(self.views),
-            buys: Either::Left(self.buys),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct UserTagByTime(UserTag);
 impl PartialEq for UserTagByTime {
     fn eq(&self, other: &Self) -> bool {
@@ -103,6 +54,22 @@ impl Ord for UserTagByTime {
 impl From<UserTag> for UserTagByTime {
     fn from(tag: UserTag) -> Self {
         UserTagByTime(tag)
+    }
+}
+impl Serialize for UserTagByTime {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for UserTagByTime {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        UserTag::deserialize(deserializer).map(|tag| Self(tag))
     }
 }
 
@@ -133,33 +100,69 @@ impl System {
                     Action::View => &mut user_profile.views,
                     Action::Buy => &mut user_profile.buys,
                 };
-                heap.push(tag.clone().into());
-                if heap.len() > 200 {
+                heap.push(Reverse(tag.clone().into()));
+                if heap.len() > MAX_TAGS_BY_COOKIE {
                     heap.pop().unwrap();
                 }
             })
             .or_insert_with(|| {
-                let heap =
-                    std::iter::once(UserTagByTime::from(tag.clone())).collect::<BinaryHeap<_>>();
+                let heap = std::iter::once(Reverse(UserTagByTime::from(tag.clone())))
+                    .collect::<BinaryHeap<_>>();
                 let (views, buys) = match tag.action {
                     Action::View => (heap, BinaryHeap::new()),
                     Action::Buy => (BinaryHeap::new(), heap),
                 };
-                UserProfile { views, buys }
+                UserProfileInner {
+                    cookie: tag.cookie.clone(),
+                    views,
+                    buys,
+                }
             });
     }
 
     pub fn last_tags_by_cookie<'a>(
         &'a self,
-        cookie: &str,
+        cookie: &'a str,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
         limit: usize,
-    ) -> UserProfileIter<'a, impl Iterator<Item = &'a UserTag>, impl Iterator<Item = &'a UserTag>>
-    {
+    ) -> UserProfile {
         assert!(limit <= MAX_TAGS_BY_COOKIE);
-        self.tags_by_cookie
+        let profile = self
+            .tags_by_cookie
             .get(cookie)
-            .map(|heap| heap.iter().either_right())
-            .unwrap_or(UserProfileIter::new_empty().either_left())
+            .map(|profile| {
+                fn filtered_iter<'a>(
+                    iter: impl Iterator<Item = &'a Reverse<UserTagByTime>> + DoubleEndedIterator,
+                    time_from: DateTime<Utc>,
+                    time_to: DateTime<Utc>,
+                    limit: usize,
+                ) -> impl Iterator<Item = &'a UserTag> {
+                    iter.map(|tag| &tag.0 .0)
+                        .rev()
+                        .skip_while(move |tag| tag.time > time_to)
+                        .take_while(move |tag| tag.time >= time_from)
+                        .take(limit)
+                }
+
+                let views = filtered_iter(profile.views.iter(), time_from, time_to, limit)
+                    .cloned()
+                    .collect();
+                let buys = filtered_iter(profile.buys.iter(), time_from, time_to, limit)
+                    .cloned()
+                    .collect();
+                UserProfile {
+                    cookie: cookie.into(),
+                    views,
+                    buys,
+                }
+            })
+            .unwrap_or_else(|| UserProfile {
+                cookie: cookie.into(),
+                views: Default::default(),
+                buys: Default::default(),
+            });
+        profile
     }
 
     pub fn aggregate<'a>(
@@ -172,8 +175,9 @@ impl System {
         category_id: Option<&'a str>,
     ) -> impl Iterator<Item = Bucket> + 'a {
         assert!(time_from < time_to);
-        let range = self.tags_by_timestamp.range(time_from.inner()..time_to.inner());
-        println!("Range:\n{:#?}", range);
+        let range = self
+            .tags_by_timestamp
+            .range(time_from.inner()..time_to.inner());
 
         struct BucketIter<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> {
             min_curr: UtcMinute,
@@ -293,43 +297,59 @@ pub struct Bucket {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
+    use std::vec;
+
+    use chrono::{NaiveDate, NaiveDateTime};
 
     use crate::types::{Device, ProductInfo};
 
     use super::*;
 
-    #[test]
-    fn use_case_3_aggregates_properly() {
-        let mut system = System::new();
-        let default_product_info = ProductInfo {
+    struct TestMinutes {
+        minute_middle: UtcMinute,
+        minute_earlier: UtcMinute,
+        _minute_later: UtcMinute,
+        minute_after: UtcMinute,
+    }
+
+    fn default_product_info() -> ProductInfo {
+        ProductInfo {
             product_id: "0123".to_owned(),
             brand_id: "2137".to_owned(),
             category_id: "42".to_owned(),
             price: 0,
-        };
-        let default_tag = UserTag {
+        }
+    }
+    fn default_tag() -> UserTag {
+        UserTag {
             time: DateTime::<Utc>::MIN_UTC,
             cookie: "cookie".to_owned(),
             country: "PL".to_owned(),
             device: Device::Pc,
             action: Action::Buy,
             origin: "CHRL".to_owned(),
-            product_info: default_product_info.clone(),
-        };
+            product_info: default_product_info(),
+        }
+    }
 
-        let naive_date = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
-        let naive_moment = naive_date.and_hms_opt(21, 37, 42).unwrap();
+    fn moment_middle() -> DateTime<Utc> {
+        let naive_date: NaiveDate = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let naive_moment: NaiveDateTime = naive_date.and_hms_opt(21, 37, 42).unwrap();
+        let moment_middle: DateTime<Utc> = DateTime::from_utc(naive_moment, Utc);
+        moment_middle
+    }
 
-        let moment_middle = DateTime::from_utc(naive_moment, Utc);
-        let minute_middle = UtcMinute::from(moment_middle);
+    fn build_system_and_register_tags() -> (System, TestMinutes) {
+        let mut system = System::new();
 
-        let moment_later = moment_middle
+        let minute_middle: UtcMinute = UtcMinute::from(moment_middle());
+
+        let moment_later = moment_middle()
             .checked_add_signed(chrono::Duration::seconds(2))
             .unwrap();
-        let _minute_later = UtcMinute::from(moment_later);
+        let minute_later = UtcMinute::from(moment_later);
 
-        let moment_earlier = moment_middle
+        let moment_earlier = moment_middle()
             .checked_sub_signed(chrono::Duration::minutes(3) + chrono::Duration::seconds(1))
             .unwrap();
         let minute_earlier = UtcMinute::from(moment_earlier);
@@ -338,22 +358,22 @@ mod tests {
 
         let tags_min_zero = [
             UserTag {
-                time: moment_middle,
+                time: moment_middle(),
                 action: Action::Buy,
                 product_info: ProductInfo {
                     price: 20,
-                    ..default_product_info.clone()
+                    ..default_product_info()
                 },
-                ..default_tag.clone()
+                ..default_tag()
             },
             UserTag {
-                time: moment_middle,
+                time: moment_middle() + chrono::Duration::seconds(2),
                 action: Action::Buy,
                 product_info: ProductInfo {
                     price: 30,
-                    ..default_product_info.clone()
+                    ..default_product_info()
                 },
-                ..default_tag.clone()
+                ..default_tag()
             },
         ];
 
@@ -362,18 +382,106 @@ mod tests {
             system.register_user_tag(tag);
         }
 
+        let minutes = TestMinutes {
+            minute_middle,
+            minute_earlier,
+            _minute_later: minute_later,
+            minute_after,
+        };
+        (system, minutes)
+    }
+
+    #[test]
+    fn use_case_2_profile_contains_valid_tags() {
+        let (system, minutes) = build_system_and_register_tags();
+
+        // limit higher than number of available entries
+        let user_profile = system.last_tags_by_cookie(
+            "cookie",
+            minutes.minute_middle.inner(),
+            minutes.minute_after.inner(),
+            100,
+        );
+        assert!(user_profile.views.is_empty());
+        assert_eq!(
+            user_profile.buys,
+            vec![
+                UserTag {
+                    time: moment_middle() + chrono::Duration::seconds(2),
+                    action: Action::Buy,
+                    product_info: ProductInfo {
+                        price: 30,
+                        ..default_product_info()
+                    },
+                    ..default_tag()
+                },
+                UserTag {
+                    time: moment_middle(),
+                    action: Action::Buy,
+                    product_info: ProductInfo {
+                        price: 20,
+                        ..default_product_info()
+                    },
+                    ..default_tag()
+                },
+            ]
+        );
+
+        // limit lower than number of available entries
+        let user_profile = system.last_tags_by_cookie(
+            "cookie",
+            minutes.minute_middle.inner(),
+            minutes.minute_after.inner(),
+            1,
+        );
+        assert_eq!(
+            user_profile.buys,
+            vec![UserTag {
+                time: moment_middle() + chrono::Duration::seconds(2),
+                action: Action::Buy,
+                product_info: ProductInfo {
+                    price: 30,
+                    ..default_product_info()
+                },
+                ..default_tag()
+            },]
+        );
+    }
+
+    #[test]
+    fn use_case_3_aggregates_properly() {
+        let (system, minutes) = build_system_and_register_tags();
         // println!("{:#?}", system);
 
         assert_eq!(
             system
-                .aggregate(minute_earlier, minute_after, Action::Buy, None, None, None)
+                .aggregate(
+                    minutes.minute_earlier,
+                    minutes.minute_after,
+                    Action::Buy,
+                    None,
+                    None,
+                    None
+                )
                 .collect::<Vec<_>>(),
             vec![
-                Bucket{ minute: minute_middle.with_added_minutes(-3), count: 0, sum_price: 0 },
-                Bucket{ minute: minute_middle.with_added_minutes(-2), count: 0, sum_price: 0 },
-                Bucket{ minute: minute_middle.with_added_minutes(-1), count: 0, sum_price: 0 },
                 Bucket {
-                    minute: minute_middle,
+                    minute: minutes.minute_middle.with_added_minutes(-3),
+                    count: 0,
+                    sum_price: 0
+                },
+                Bucket {
+                    minute: minutes.minute_middle.with_added_minutes(-2),
+                    count: 0,
+                    sum_price: 0
+                },
+                Bucket {
+                    minute: minutes.minute_middle.with_added_minutes(-1),
+                    count: 0,
+                    sum_price: 0
+                },
+                Bucket {
+                    minute: minutes.minute_middle,
                     count: 2,
                     sum_price: 50
                 },
