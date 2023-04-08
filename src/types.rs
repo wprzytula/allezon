@@ -1,7 +1,10 @@
-use chrono::{DateTime, DurationRound, Utc};
+use std::str::FromStr;
+
+use chrono::{DateTime, DurationRound, NaiveDateTime, Utc};
+use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserTag {
     pub time: DateTime<Utc>, // format: "2022-03-22T12:15:00.000Z"
     //   millisecond precision
@@ -67,6 +70,43 @@ impl UtcMinute {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct TimeRange {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+}
+
+struct TimeRangeVisitor;
+
+impl<'de> Visitor<'de> for TimeRangeVisitor {
+    type Value = TimeRange;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("time_range")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        let (time_from, time_to) = v
+            .split_once('_')
+            .ok_or(E::custom("expected underscore after first DateTime"))?;
+        let from = DateTime::from_utc(NaiveDateTime::from_str(time_from).map_err(E::custom)?, Utc);
+        let to = DateTime::from_utc(NaiveDateTime::from_str(time_to).map_err(E::custom)?, Utc);
+        Ok(Self::Value { from, to })
+    }
+}
+
+impl<'de> Deserialize<'de> for TimeRange {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(TimeRangeVisitor)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Datelike, Timelike};
@@ -81,5 +121,32 @@ mod tests {
         assert_eq!(now.minute(), utc_minute.inner().minute());
         assert_eq!(utc_minute.inner().second(), 0);
         assert_eq!(utc_minute.inner().nanosecond(), 0);
+    }
+
+    #[test]
+    fn deserialize_time_range() {
+        let _: TimeRange =
+            serde_json::from_str("\"2022-03-22T12:15:00.000_2022-03-22T12:30:00.000\"").unwrap();
+    }
+
+    #[test]
+    fn deserialize_user_tag() {
+        let tag_str = r#"
+        {
+            "time": "2022-03-22T12:15:00.000Z",
+            "cookie": "user",
+            "country": "PL",
+            "device": "PC",
+            "action": "VIEW",
+            "origin": "Rawa",
+            "product_info": {
+                "product_id": "pineapple",
+                "brand_id": "apple",
+                "category_id": "fruit",
+                "price": 50
+            }
+        }"#;
+        let _: UserTag =
+            serde_json::from_str(tag_str).unwrap();
     }
 }
