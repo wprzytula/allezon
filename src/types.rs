@@ -5,6 +5,7 @@ use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct UserTag {
     pub time: DateTime<Utc>, // format: "2022-03-22T12:15:00.000Z"
     //   millisecond precision
@@ -17,7 +18,7 @@ pub struct UserTag {
     pub product_info: ProductInfo,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Device {
     Pc,
@@ -33,6 +34,7 @@ pub enum Action {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ProductInfo {
     pub product_id: String,
     pub brand_id: String,
@@ -146,7 +148,6 @@ mod tests {
                 "price": 50
             }
         }"#;
-        let _: UserTag =
-            serde_json::from_str(tag_str).unwrap();
+        let _: UserTag = serde_json::from_str(tag_str).unwrap();
     }
 }
