@@ -1,3 +1,4 @@
+mod endpoints;
 mod mock;
 pub mod types;
 
