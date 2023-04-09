@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::str::FromStr;
 
 use chrono::{DateTime, DurationRound, NaiveDateTime, Utc};
@@ -31,6 +32,15 @@ pub enum Device {
 pub enum Action {
     View,
     Buy,
+}
+
+impl Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Action::View => f.write_str("VIEW"),
+            Action::Buy => f.write_str("BUY"),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -72,7 +82,7 @@ impl UtcMinute {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct TimeRange {
     pub from: DateTime<Utc>,
     pub to: DateTime<Utc>,
@@ -100,12 +110,39 @@ impl<'de> Visitor<'de> for TimeRangeVisitor {
     }
 }
 
+impl Display for TimeRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn allezon_datetime(datetime: DateTime<Utc>) -> String {
+            let mut serialised = datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            assert_eq!(serialised.pop().unwrap(), 'Z'); // strips 'Z' suffix, as Allezon timerange does not use the it
+            serialised.shrink_to_fit();
+            serialised
+        }
+        write!(
+            f,
+            "{}_{}",
+            allezon_datetime(self.from),
+            allezon_datetime(self.to)
+        )
+    }
+}
+
 impl<'de> Deserialize<'de> for TimeRange {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         deserializer.deserialize_str(TimeRangeVisitor)
+    }
+}
+
+impl Serialize for TimeRange {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Uses existing Display impl
+        serializer.collect_str(self)
     }
 }
 
