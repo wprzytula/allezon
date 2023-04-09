@@ -146,6 +146,13 @@ impl Serialize for TimeRange {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct UserProfile {
+    pub cookie: String,
+    pub views: Vec<UserTag>,
+    pub buys: Vec<UserTag>,
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Datelike, Timelike};

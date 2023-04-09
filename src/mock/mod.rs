@@ -6,7 +6,7 @@ use std::{
 use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Action, UserTag, UtcMinute};
+use crate::types::{Action, UserProfile, UserTag, UtcMinute};
 
 const MAX_TAGS_BY_COOKIE: usize = 200;
 
@@ -24,13 +24,6 @@ struct UserProfileInner {
     cookie: String,
     views: BinaryHeap<Reverse<UserTagByTime>>,
     buys: BinaryHeap<Reverse<UserTagByTime>>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct UserProfile {
-    pub cookie: String,
-    pub views: Vec<UserTag>,
-    pub buys: Vec<UserTag>,
 }
 
 #[derive(Clone, Debug)]
