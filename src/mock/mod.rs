@@ -296,7 +296,7 @@ pub struct Bucket {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::vec;
 
     use chrono::{NaiveDate, NaiveDateTime};
@@ -305,11 +305,11 @@ mod tests {
 
     use super::*;
 
-    struct TestMinutes {
-        minute_middle: UtcMinute,
-        minute_earlier: UtcMinute,
-        _minute_later: UtcMinute,
-        minute_after: UtcMinute,
+    pub struct TestMinutes {
+        pub minute_middle: UtcMinute,
+        pub minute_earlier: UtcMinute,
+        pub _minute_later: UtcMinute,
+        pub minute_after: UtcMinute,
     }
 
     fn default_product_info() -> ProductInfo {
@@ -339,7 +339,7 @@ mod tests {
         moment_middle
     }
 
-    fn build_system_and_register_tags() -> (System, TestMinutes) {
+    pub fn build_system_and_register_tags() -> (System, TestMinutes) {
         let mut system = System::new();
 
         let minute_middle: UtcMinute = UtcMinute::from(moment_middle());
