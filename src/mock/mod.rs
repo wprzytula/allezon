@@ -62,7 +62,7 @@ impl<'de> Deserialize<'de> for UserTagByTime {
     where
         D: serde::Deserializer<'de>,
     {
-        UserTag::deserialize(deserializer).map(|tag| Self(tag))
+        UserTag::deserialize(deserializer).map(Self)
     }
 }
 

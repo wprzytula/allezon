@@ -103,7 +103,7 @@ impl<'de> Visitor<'de> for TimeRangeVisitor {
     {
         let (time_from, time_to) = v
             .split_once('_')
-            .ok_or(E::custom("expected underscore after first DateTime"))?;
+            .ok_or_else(|| E::custom("expected underscore after first DateTime"))?;
         let from = DateTime::from_utc(NaiveDateTime::from_str(time_from).map_err(E::custom)?, Utc);
         let to = DateTime::from_utc(NaiveDateTime::from_str(time_to).map_err(E::custom)?, Utc);
         Ok(Self::Value { from, to })

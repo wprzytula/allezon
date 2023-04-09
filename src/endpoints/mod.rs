@@ -61,7 +61,7 @@ async fn use_case_2(
     } = params;
 
     if let Some(limit) = limit {
-        if limit < 0 || limit > 200 {
+        if !(0..=200).contains(&limit) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 "'limit' out of accepted bounds '[0, 200]'".to_owned(),
@@ -236,7 +236,7 @@ impl<'de> Deserialize<'de> for UseCase3Params {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &[
+        const FIELDS: &[&str] = &[
             "origin",
             "action",
             "time_range",
@@ -304,10 +304,8 @@ impl UseCase3Response {
             columns.push("category_id".to_owned());
         }
 
-        for agg in [fst, snd] {
-            if let Some(aggregate) = agg {
-                columns.push(aggregate.display().to_owned());
-            }
+        for agg in [fst, snd].into_iter().flatten() {
+            columns.push(agg.display().to_owned());
         }
 
         let rows = buckets
@@ -331,14 +329,12 @@ impl UseCase3Response {
                         columns.push(category_id);
                     }
 
-                    for agg in [fst, snd] {
-                        if let Some(aggregate) = agg {
-                            let agg_val = match aggregate {
-                                Aggregate::Count => count.to_string(),
-                                Aggregate::SumPrice => sum_price.to_string(),
-                            };
-                            columns.push(agg_val);
-                        }
+                    for agg in [fst, snd].into_iter().flatten() {
+                        let agg_val = match agg {
+                            Aggregate::Count => count.to_string(),
+                            Aggregate::SumPrice => sum_price.to_string(),
+                        };
+                        columns.push(agg_val);
                     }
 
                     columns
