@@ -48,6 +48,9 @@ either = "1.8"
 # serde = { version = "1.0", features = ["derive"] }
 # serde_yaml = { version = "0.9.14", optional = true }
 
+# Utilities
+clap = { version = "4.2.1", features = ["derive"] }
+
 
 [dev-dependencies]
 # ntest = "0.8.1"
