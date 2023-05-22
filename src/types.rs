@@ -153,6 +153,13 @@ pub struct UserProfile {
     pub buys: Vec<UserTag>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bucket {
+    pub minute: UtcMinute,
+    pub count: usize,
+    pub sum_price: i32,
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Datelike, Timelike};

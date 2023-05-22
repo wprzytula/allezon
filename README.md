@@ -1,9 +1,9 @@
-Usage:
-1. Run server with:
+## Usage
+Run the server with:
 ```shell
-cargo run
+cargo run -- -a [listen address] -p [listen port] -s [scylla url]
 ```
-It listens on `127.0.0.1:9042`. To test functionality, these are example operations to issue:
+It listens on `[listen address]:[listen port]`. To test functionality, these are example operations to issue:
 
 ```shell
 http --json POST 127.0.0.1:9042/user_tags time="2022-03-22T12:15:00.000Z" cookie="cookie" country="PL" device="PC" action="BUY" origin="CHRL" product_info:='{"product_id": "pineapple", "brand_id": "apple", "category_id": "fruit", "price": 50}'

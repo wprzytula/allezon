@@ -12,28 +12,30 @@ use reqwest::StatusCode;
 use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::{
-    mock::{Bucket, System},
-    types::{Action, TimeRange, UserProfile, UserTag},
+    scylla::Session,
+    types::{Action, Bucket, TimeRange, UserProfile, UserTag},
 };
 
-pub fn build_router(initial_system: System) -> Router {
+type AppState = Arc<Session>;
+
+pub fn build_router(initial_session: Session) -> Router {
     Router::new()
         .route("/echo", get(|| async { "ECHO!" }))
         .route("/user_tags", post(use_case_1))
         .route("/user_profiles/:cookie", post(use_case_2))
-        .route("/aggregates", post(use_case_3))
-        .with_state(Arc::new(RwLock::new(initial_system)))
+        // .route("/aggregates", post(use_case_3))
+        .with_state(Arc::new(initial_session))
 }
 
 // `StatusCode` implement `IntoResponse` and therefore
 // `Result<Status, StatusCode>` also implements `IntoResponse`
 #[axum_macros::debug_handler] // <- this provides better error messages
 async fn use_case_1(
-    State(system): State<Arc<RwLock<System>>>, // extract state in this handler
-    Query(_params): Query<()>,                 // this asserts that the params are empty
+    State(system): State<AppState>, // extract state in this handler
+    Query(_params): Query<()>,      // this asserts that the params are empty
     Json(tag): Json<UserTag>,
 ) -> Result<StatusCode, StatusCode> {
-    system.write().unwrap().register_user_tag(tag);
+    system.register_user_tag(tag).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -48,7 +50,7 @@ struct UseCase2Params {
 
 #[axum_macros::debug_handler] // <- this provides better error messages
 async fn use_case_2(
-    State(system): State<Arc<RwLock<System>>>, // extract state in this handler
+    State(session): State<AppState>, // extract state in this handler
     Path(cookie): Path<String>,
     Query(params): Query<UseCase2Params>,
 ) -> Result<Json<UserProfile>, (StatusCode, String)> {
@@ -69,13 +71,9 @@ async fn use_case_2(
         }
     }
 
-    let system_guard = system.read().unwrap();
-    let user_profile = system_guard.last_tags_by_cookie(
-        &cookie,
-        time_from,
-        time_to,
-        limit.unwrap_or(200) as usize,
-    );
+    let user_profile = session
+        .last_tags_by_cookie(&cookie, time_from, time_to, limit.unwrap_or(200) as usize)
+        .await;
 
     Ok(Json(user_profile))
 }
@@ -348,39 +346,11 @@ impl UseCase3Response {
 
 #[axum_macros::debug_handler] // <- this provides better error messages
 async fn use_case_3(
-    State(system): State<Arc<RwLock<System>>>, // extract state in this handler
+    State(system): State<AppState>, // extract state in this handler
     // params: Result<Query<UseCase3Params>, QueryRejection>, <-- for debug
     Query(params): Query<UseCase3Params>,
 ) -> Result<Json<UseCase3Response>, StatusCode> {
-    dbg!(&params);
-
-    // let Query(params) = params.map_err(|_| StatusCode::BAD_REQUEST)?; <-- for debug
-
-    let UseCase3Params {
-        time_range: TimeRange {
-            from: time_from,
-            to: time_to,
-        },
-        action,
-        origin,
-        brand_id,
-        category_id,
-        ..
-    } = params.clone();
-
-    let system_guard = system.read().unwrap();
-    let bucket_iterator = system_guard.aggregate(
-        time_from.into(),
-        time_to.into(),
-        action,
-        origin.as_deref(),
-        brand_id.as_deref(),
-        category_id.as_deref(),
-    );
-
-    let response = UseCase3Response::new(params, bucket_iterator);
-
-    Ok(Json(response))
+    unimplemented!()
 }
 
 #[cfg(test)]
@@ -389,8 +359,6 @@ mod tests {
 
     use tokio::sync::oneshot;
     use tracing::{info, instrument::WithSubscriber};
-
-    use crate::mock::tests::build_system_and_register_tags;
 
     use super::*;
 
@@ -501,48 +469,48 @@ mod tests {
         let _ = futures::future::join(server, request_fut).await;
     }
 
-    #[tokio::test]
-    async fn test_use_case_3() {
-        init_logger();
-        let (tx, rx) = oneshot::channel::<()>();
-        let (system, test_minutes) = build_system_and_register_tags();
-        let router = build_router(system);
-        let server = axum::Server::bind(&SocketAddr::from(([127, 0, 0, 3], 9042)))
-            .serve(router.into_make_service())
-            .with_graceful_shutdown(async move {
-                let _ = rx.await;
-            })
-            .with_current_subscriber();
+    // #[tokio::test]
+    // async fn test_use_case_3() {
+    //     init_logger();
+    //     let (tx, rx) = oneshot::channel::<()>();
+    //     let (system, test_minutes) = build_system_and_register_tags();
+    //     let router = build_router(system);
+    //     let server = axum::Server::bind(&SocketAddr::from(([127, 0, 0, 3], 9042)))
+    //         .serve(router.into_make_service())
+    //         .with_graceful_shutdown(async move {
+    //             let _ = rx.await;
+    //         })
+    //         .with_current_subscriber();
 
-        let request_fut = async {
-            let client = reqwest::Client::new();
-            let time_range = TimeRange {
-                from: test_minutes.minute_earlier.inner(),
-                to: test_minutes.minute_after.inner(),
-            }
-            .to_string();
-            dbg!(&time_range);
-            let response = client
-                .post("http://127.0.0.3:9042/aggregates")
-                .query(&[
-                    ("time_range", time_range.as_str()),
-                    ("action", "BUY"),
-                    ("aggregates", "count"),
-                    ("aggregates", "sum_price"),
-                ])
-                .send()
-                .await
-                .unwrap();
-            tx.send(()).unwrap();
-            let result = response.error_for_status();
-            let text = result.unwrap().text().await.unwrap();
-            info!("#### Received response:\n{}", &text);
-            info!(
-                "{:#?}",
-                serde_json::from_str::<serde_json::Value>(&text).unwrap()
-            );
-        };
+    //     let request_fut = async {
+    //         let client = reqwest::Client::new();
+    //         let time_range = TimeRange {
+    //             from: test_minutes.minute_earlier.inner(),
+    //             to: test_minutes.minute_after.inner(),
+    //         }
+    //         .to_string();
+    //         dbg!(&time_range);
+    //         let response = client
+    //             .post("http://127.0.0.3:9042/aggregates")
+    //             .query(&[
+    //                 ("time_range", time_range.as_str()),
+    //                 ("action", "BUY"),
+    //                 ("aggregates", "count"),
+    //                 ("aggregates", "sum_price"),
+    //             ])
+    //             .send()
+    //             .await
+    //             .unwrap();
+    //         tx.send(()).unwrap();
+    //         let result = response.error_for_status();
+    //         let text = result.unwrap().text().await.unwrap();
+    //         info!("#### Received response:\n{}", &text);
+    //         info!(
+    //             "{:#?}",
+    //             serde_json::from_str::<serde_json::Value>(&text).unwrap()
+    //         );
+    //     };
 
-        let _ = futures::future::join(server, request_fut).await;
-    }
+    //     let _ = futures::future::join(server, request_fut).await;
+    // }
 }

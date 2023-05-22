@@ -2,7 +2,7 @@ use clap::Parser;
 use std::net::ToSocketAddrs;
 
 mod endpoints;
-mod mock;
+mod scylla;
 pub mod types;
 
 #[derive(Parser, Debug)]
@@ -10,8 +10,11 @@ struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     address: String,
 
-    #[arg(short, long, default_value_t = 9042)]
+    #[arg(short, long, default_value_t = 8080)]
     port: u16,
+
+    #[arg(short, long, default_value = "127.0.0.1:9042")]
+    scylla_uri: String,
 }
 
 async fn shutdown_signal() {
@@ -30,9 +33,11 @@ async fn main() {
         .expect("Failed to parse socket address")
         .next()
         .expect("Failed to parse socket address");
-    println!("Starting server on {}", socket_address);
 
-    let router = endpoints::build_router(mock::System::new());
+    let router = endpoints::build_router(scylla::Session::new(&args.scylla_uri).await);
+    println!("Connected to Scylla on {}", args.scylla_uri);
+
+    println!("Starting server on {}", socket_address);
     let server = axum::Server::bind(&socket_address)
         .serve(router.into_make_service())
         .with_graceful_shutdown(shutdown_signal());
