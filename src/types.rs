@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use chrono::{DateTime, DurationRound, NaiveDateTime, Utc};
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
@@ -158,6 +159,19 @@ pub struct Bucket {
     pub minute: UtcMinute,
     pub count: usize,
     pub sum_price: i32,
+}
+
+#[async_trait]
+pub trait System: Sync + Send {
+    async fn register_user_tag(&self, user_tag: UserTag);
+
+    async fn last_tags_by_cookie<'a>(
+        &'a self,
+        cookie: &'a str,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        limit: usize,
+    ) -> UserProfile;
 }
 
 #[cfg(test)]

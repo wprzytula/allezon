@@ -11,14 +11,11 @@ use axum::{
 use reqwest::StatusCode;
 use serde::{de::Visitor, Deserialize, Serialize};
 
-use crate::{
-    scylla::Session,
-    types::{Action, Bucket, TimeRange, UserProfile, UserTag},
-};
+use crate::types::{Action, Bucket, System, TimeRange, UserProfile, UserTag};
 
-type AppState = Arc<Session>;
+type AppState = Arc<dyn System>;
 
-pub fn build_router(initial_session: Session) -> Router {
+pub fn build_router(initial_session: impl System + 'static) -> Router {
     Router::new()
         .route("/echo", get(|| async { "ECHO!" }))
         .route("/user_tags", post(use_case_1))
@@ -276,6 +273,7 @@ struct UseCase3Response {
     columns: Vec<String>,
     rows: Vec<Vec<String>>,
 }
+
 impl UseCase3Response {
     fn new(params: UseCase3Params, buckets: impl Iterator<Item = Bucket>) -> Self {
         let UseCase3Params {
@@ -360,11 +358,13 @@ mod tests {
     use tokio::sync::oneshot;
     use tracing::{info, instrument::WithSubscriber};
 
+    use crate::mock::{self, tests::build_system_and_register_tags};
+
     use super::*;
 
     #[tokio::test]
     async fn simplest_echo() {
-        let router = build_router(System::new());
+        let router = build_router(mock::System::new());
         tokio::spawn(
             axum::Server::bind(&SocketAddr::from(([127, 0, 0, 4], 9042)))
                 .serve(router.into_make_service()),
@@ -394,7 +394,7 @@ mod tests {
     async fn test_use_case_1() {
         init_logger();
         let (tx, rx) = oneshot::channel::<()>();
-        let router = build_router(System::new());
+        let router = build_router(mock::System::new());
         let server = axum::Server::bind(&SocketAddr::from(([127, 0, 0, 5], 9042)))
             .serve(router.into_make_service())
             .with_graceful_shutdown(async move {
@@ -438,7 +438,7 @@ mod tests {
     async fn test_use_case_2() {
         init_logger();
         let (tx, rx) = oneshot::channel::<()>();
-        let (system, test_minutes) = build_system_and_register_tags();
+        let (system, test_minutes) = build_system_and_register_tags().await;
         let router = build_router(system);
         let server = axum::Server::bind(&SocketAddr::from(([127, 0, 0, 6], 9042)))
             .serve(router.into_make_service())
@@ -473,7 +473,7 @@ mod tests {
     // async fn test_use_case_3() {
     //     init_logger();
     //     let (tx, rx) = oneshot::channel::<()>();
-    //     let (system, test_minutes) = build_system_and_register_tags();
+    //     let (system, test_minutes) = build_system_and_register_tags().await;
     //     let router = build_router(system);
     //     let server = axum::Server::bind(&SocketAddr::from(([127, 0, 0, 3], 9042)))
     //         .serve(router.into_make_service())

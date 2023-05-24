@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
@@ -106,8 +107,11 @@ impl Session {
             session,
         }
     }
+}
 
-    pub async fn register_user_tag(&self, user_tag: types::UserTag) {
+#[async_trait]
+impl types::System for Session {
+    async fn register_user_tag(&self, user_tag: types::UserTag) {
         let user_tag_time = user_tag.time;
         let user_tag_cookie = user_tag.cookie.clone();
         let user_tag_action =
@@ -123,9 +127,9 @@ impl Session {
             .expect("Failed to insert user tag");
     }
 
-    pub async fn last_tags_by_cookie(
-        &self,
-        cookie: &str,
+    async fn last_tags_by_cookie<'a>(
+        &'a self,
+        cookie: &'a str,
         time_from: DateTime<Utc>,
         time_to: DateTime<Utc>,
         limit: usize,
