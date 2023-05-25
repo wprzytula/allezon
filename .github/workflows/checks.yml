@@ -34,7 +34,7 @@ jobs:
     - name: Build
       run: cargo build --verbose --examples --tests
     - name: Run tests
-      run: SCYLLA_URL=172.42.0.2:9042 SCYLLA_URL=172.42.0.3:9042 SCYLLA_URL3=172.42.0.4:9042 cargo test --verbose
+      run: SCYLLA_URL="172.42.0.3:9042" cargo test --verbose
     - name: Stop the cluster
       if: ${{ always() }}
       run: docker-compose -f test/cluster/docker-compose.yml stop

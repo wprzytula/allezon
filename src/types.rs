@@ -7,7 +7,7 @@ use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct UserTag {
     pub time: DateTime<Utc>, // format: "2022-03-22T12:15:00.000Z"
     //   millisecond precision
@@ -21,6 +21,7 @@ pub struct UserTag {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Hash))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Device {
     Pc,
@@ -29,6 +30,7 @@ pub enum Device {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Hash))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Action {
     View,
@@ -45,7 +47,7 @@ impl Display for Action {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct ProductInfo {
     pub product_id: String,
     pub brand_id: String,
@@ -147,7 +149,8 @@ impl Serialize for TimeRange {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct UserProfile {
     pub cookie: String,
     pub views: Vec<UserTag>,

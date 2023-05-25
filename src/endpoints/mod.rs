@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use axum::{

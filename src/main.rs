@@ -4,7 +4,9 @@ use std::net::ToSocketAddrs;
 mod endpoints;
 mod mock;
 mod scylla;
-pub mod types;
+#[cfg(test)]
+mod tests;
+mod types;
 
 #[derive(Parser, Debug)]
 struct Args {
