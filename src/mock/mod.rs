@@ -174,6 +174,11 @@ impl types::System for System {
             });
         profile
     }
+
+    async fn clear(&self) {
+        let mut data = self.data.write().await;
+        data.tags_by_cookie = Default::default();
+    }
 }
 
 #[cfg(test)]

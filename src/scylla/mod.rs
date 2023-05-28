@@ -177,4 +177,11 @@ impl types::System for Session {
             buys: load_action(types::Action::Buy).await,
         }
     }
+
+    async fn clear(&self) {
+        self.session
+            .query("TRUNCATE user_tags", ())
+            .await
+            .expect("Failed to clear user tags");
+    }
 }

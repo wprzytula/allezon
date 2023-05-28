@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    sync::Arc,
-};
+use std::{fmt::Display, sync::Arc};
 
 use axum::{
     extract::{Json, Path, Query, State},
@@ -20,8 +17,13 @@ pub fn build_router(initial_session: impl System + 'static) -> Router {
         .route("/echo", get(|| async { "ECHO!" }))
         .route("/user_tags", post(use_case_1))
         .route("/user_profiles/:cookie", post(use_case_2))
+        .route("/clear", post(clear))
         // .route("/aggregates", post(use_case_3))
         .with_state(Arc::new(initial_session))
+}
+
+async fn clear(State(system): State<AppState>) {
+    system.clear().await;
 }
 
 // `StatusCode` implement `IntoResponse` and therefore

@@ -175,6 +175,8 @@ pub trait System: Sync + Send {
         time_to: DateTime<Utc>,
         limit: usize,
     ) -> UserProfile;
+
+    async fn clear(&self);
 }
 
 #[cfg(test)]
