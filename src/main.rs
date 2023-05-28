@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::net::ToSocketAddrs;
+use tracing::log;
 
 mod endpoints;
 mod mock;
@@ -32,6 +33,7 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let args = Args::parse();
 
     let socket_address = (args.address, args.port)
@@ -50,7 +52,7 @@ async fn main() {
         log::info!("Starting in mock mode");
     }
 
-    println!("Starting server on {}", socket_address);
+    log::info!("Starting server on {}", socket_address);
     let server = axum::Server::bind(&socket_address)
         .serve(router.into_make_service())
         .with_graceful_shutdown(shutdown_signal());

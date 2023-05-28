@@ -7,6 +7,7 @@ use axum::{
 };
 use reqwest::StatusCode;
 use serde::{de::Visitor, Deserialize, Serialize};
+use tracing::log;
 
 use crate::types::{Action, Bucket, System, TimeRange, UserProfile, UserTag};
 
@@ -23,6 +24,7 @@ pub fn build_router(initial_session: impl System + 'static) -> Router {
 }
 
 async fn clear(State(system): State<AppState>) {
+    log::info!("Clearing the system");
     system.clear().await;
 }
 
@@ -34,6 +36,7 @@ async fn use_case_1(
     Query(_params): Query<()>,      // this asserts that the params are empty
     Json(tag): Json<UserTag>,
 ) -> Result<StatusCode, StatusCode> {
+    log::info!("Registering user tag");
     system.register_user_tag(tag).await;
 
     Ok(StatusCode::NO_CONTENT)
@@ -53,6 +56,8 @@ async fn use_case_2(
     Path(cookie): Path<String>,
     Query(params): Query<UseCase2Params>,
 ) -> Result<Json<UserProfile>, (StatusCode, String)> {
+    log::info!("Getting user profile");
+
     let UseCase2Params {
         time_range: TimeRange {
             from: time_from,
