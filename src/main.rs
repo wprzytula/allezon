@@ -1,5 +1,5 @@
-use std::net::ToSocketAddrs;
 use clap::Parser;
+use std::net::ToSocketAddrs;
 
 mod endpoints;
 mod mock;
