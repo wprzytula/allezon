@@ -1,0 +1,46 @@
+name: Allezon sanity checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Format check
+      run: cargo fmt --verbose --all -- --check
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Clippy check
+      run: cargo clippy --verbose --examples --tests -- -Aclippy::uninlined_format_args
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup 3-node Scylla cluster
+      run: |
+        sudo sh -c "echo 2097152 >> /proc/sys/fs/aio-max-nr"
+        docker-compose -f test/cluster/docker-compose.yml up -d
+    - name: Build
+      run: cargo build --verbose --examples --tests
+    - name: Run tests
+      run: SCYLLA_URL=172.42.0.2:9042 SCYLLA_URL=172.42.0.3:9042 SCYLLA_URL3=172.42.0.4:9042 cargo test --verbose
+    - name: Stop the cluster
+      if: ${{ always() }}
+      run: docker-compose -f test/cluster/docker-compose.yml stop
+    - name: Print the cluster logs
+      if: ${{ always() }}
+      run: docker-compose -f test/cluster/docker-compose.yml logs
+    - name: Remove cluster
+      if: ${{ always() }}
+      run: docker-compose -f test/cluster/docker-compose.yml down
