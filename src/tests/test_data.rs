@@ -43,9 +43,8 @@ impl TestData {
         for i in 0..user_tags_number {
             let user_tag = self.dataset.random_user_tag(dataset::UserTagConfig {
                 cookie: Some(cookie.clone()),
-                action: action.clone(),
+                action,
                 time: Some(now - chrono::Duration::milliseconds(i as i64)),
-                ..Default::default()
             });
             self.scylla_client.register_user_tag(user_tag.clone()).await;
             self.mock_client.register_user_tag(user_tag.clone()).await;

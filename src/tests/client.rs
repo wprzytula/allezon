@@ -39,7 +39,7 @@ impl Client {
         );
         let response = self.client.post(url).send().await?;
 
-        Ok(response.json().await?)
+        response.json().await
     }
 
     pub async fn clear(&self) {

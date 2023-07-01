@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     extract::{Json, Path, Query, State},
@@ -6,10 +6,13 @@ use axum::{
     Router,
 };
 use reqwest::StatusCode;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::Deserialize;
+#[cfg(test)]
+use serde::Serialize;
+
 use tracing::log;
 
-use crate::types::{Action, Bucket, System, TimeRange, UserProfile, UserTag};
+use crate::types::{System, TimeRange, UserProfile, UserTag};
 
 type AppState = Arc<dyn System>;
 
@@ -82,288 +85,288 @@ async fn use_case_2(
     Ok(Json(user_profile))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Aggregate {
-    Count,
-    SumPrice,
-}
-
-impl Aggregate {
-    fn display(&self) -> &'static str {
-        match self {
-            Aggregate::Count => "count",
-            Aggregate::SumPrice => "sum_price",
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Aggregates {
-    fst: Option<Aggregate>,
-    snd: Option<Aggregate>,
-}
-
-#[derive(Debug)]
-struct RepeatedAggregate(Aggregate);
-impl Display for RepeatedAggregate {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "repeated aggregate: {:?}", self.0)
-    }
-}
-
-impl Aggregates {
-    fn new() -> Self {
-        Self {
-            fst: None,
-            snd: None,
-        }
-    }
-
-    fn add(&mut self, new_agg: Aggregate) -> Result<(), RepeatedAggregate> {
-        match self.fst {
-            None => {
-                self.fst = Some(new_agg);
-                Ok(())
-            }
-            Some(agg) if agg == new_agg => Err(RepeatedAggregate(new_agg)),
-            Some(_) => {
-                if self.snd.is_some() {
-                    Err(RepeatedAggregate(new_agg))
-                } else {
-                    self.snd = Some(new_agg);
-                    Ok(())
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct UseCase3Params {
-    time_range: TimeRange,
-    action: Action,
-    aggregates: Aggregates,
-    origin: Option<String>,
-    brand_id: Option<String>,
-    category_id: Option<String>,
-}
-
-use std::fmt;
-
-use serde::de::{self, Deserializer, MapAccess};
-
-impl<'de> Deserialize<'de> for UseCase3Params {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "snake_case")]
-        enum Field {
-            TimeRange,
-            Action,
-            Aggregates,
-            Origin,
-            BrandId,
-            CategoryId,
-        }
-
-        struct UseCase3ParamsVisitor;
-        impl<'de> Visitor<'de> for UseCase3ParamsVisitor {
-            type Value = UseCase3Params;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct UseCase3Params")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<UseCase3Params, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut action = None;
-                let mut origin = None;
-                let mut time_range = None;
-                let mut brand_id = None;
-                let mut category_id = None;
-                let mut aggregates = Aggregates::new();
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Action => {
-                            if action.is_some() {
-                                return Err(de::Error::duplicate_field("action"));
-                            }
-                            action = Some(map.next_value()?);
-                        }
-                        Field::Origin => {
-                            if origin.is_some() {
-                                return Err(de::Error::duplicate_field("origin"));
-                            }
-                            origin = Some(map.next_value()?);
-                        }
-                        Field::TimeRange => {
-                            if time_range.is_some() {
-                                return Err(de::Error::duplicate_field("time_range"));
-                            }
-                            time_range = Some(map.next_value()?);
-                        }
-                        Field::BrandId => {
-                            if brand_id.is_some() {
-                                return Err(de::Error::duplicate_field("brand_id"));
-                            }
-                            brand_id = Some(map.next_value()?);
-                        }
-                        Field::CategoryId => {
-                            if category_id.is_some() {
-                                return Err(de::Error::duplicate_field("category_id"));
-                            }
-                            category_id = Some(map.next_value()?);
-                        }
-                        Field::Aggregates => aggregates
-                            .add(map.next_value()?)
-                            .map_err(de::Error::custom)?,
-                    }
-                }
-                let action = action.ok_or_else(|| de::Error::missing_field("action"))?;
-                let time_range =
-                    time_range.ok_or_else(|| de::Error::missing_field("time_range"))?;
-                Ok(UseCase3Params {
-                    time_range,
-                    action,
-                    aggregates,
-                    origin,
-                    brand_id,
-                    category_id,
-                })
-            }
-        }
-
-        const FIELDS: &[&str] = &[
-            "origin",
-            "action",
-            "time_range",
-            "brand_id",
-            "category_id",
-            "aggregates",
-        ];
-        deserializer.deserialize_struct("UseCase3Params", FIELDS, UseCase3ParamsVisitor)
-    }
-}
-
-///////// Example of response for use case 3
-// {
-//     "columns": ["1m_bucket", "action", "brand_id", "sum_price", "count"],
-//     "rows": [
-//       ["2022-03-01T00:05:00", "BUY", "Nike", "1000", "3"],
-//       ["2022-03-01T00:06:00", "BUY", "Nike", "1500", "4"],
-//       ["2022-03-01T00:07:00", "BUY", "Nike", "1200", "2"]
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+// #[serde(rename_all = "snake_case")]
+// enum Aggregate {
+//     Count,
+//     SumPrice,
 // }
-#[derive(Serialize)]
-struct UseCase3Response {
-    /*
-    ▪ First column is called "1m_bucket" .
-    ▪ Bucket values have format: 2022-03-01T00:05:00
-    ▪ They represent bucket start (second precision, full
-    minutes).
-    ▪ Only start of the bucket is needed, because bucket size is
-    fixed (1 minute).
-    ▪ Buckets are inclusive at their beginnings and exclusive at
-    their ends.
-    ▪ Filter columns are in the following order: "action", "origin",
-    "brand_id", "category_id" .
-    ▪ Include only those with not-null values (i.e. present in the
-    query, but with the order defined above).
-    ▪ Aggregate columns are listed in the order from the query.
-    ▪ ALL VALUES ARE STRINGS (including aggregates: count,
-    sum_price).
-    */
-    columns: Vec<String>,
-    rows: Vec<Vec<String>>,
-}
 
-impl UseCase3Response {
-    fn new(params: UseCase3Params, buckets: impl Iterator<Item = Bucket>) -> Self {
-        let UseCase3Params {
-            action,
-            aggregates: Aggregates { fst, snd },
-            origin,
-            brand_id,
-            category_id,
-            ..
-        } = params;
+// impl Aggregate {
+//     fn display(&self) -> &'static str {
+//         match self {
+//             Aggregate::Count => "count",
+//             Aggregate::SumPrice => "sum_price",
+//         }
+//     }
+// }
 
-        // ▪ First column is called "1m_bucket".
-        // Action is mandatory as well.
-        let mut columns = vec!["1m_bucket".to_owned(), "action".to_owned()];
+// #[derive(Debug, Clone)]
+// struct Aggregates {
+//     fst: Option<Aggregate>,
+//     snd: Option<Aggregate>,
+// }
 
-        // ▪ Filter columns are in the following order: "action", "origin", "brand_id", "category_id".
-        if origin.is_some() {
-            columns.push("origin".to_owned());
-        }
-        if brand_id.is_some() {
-            columns.push("brand_id".to_owned());
-        }
-        if category_id.is_some() {
-            columns.push("category_id".to_owned());
-        }
+// #[derive(Debug)]
+// struct RepeatedAggregate(Aggregate);
+// impl Display for RepeatedAggregate {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "repeated aggregate: {:?}", self.0)
+//     }
+// }
 
-        for agg in [fst, snd].into_iter().flatten() {
-            columns.push(agg.display().to_owned());
-        }
+// impl Aggregates {
+//     fn new() -> Self {
+//         Self {
+//             fst: None,
+//             snd: None,
+//         }
+//     }
 
-        let rows = buckets
-            .map(
-                |Bucket {
-                     minute,
-                     count,
-                     sum_price,
-                 }| {
-                    let mut columns =
-                        vec![minute.inner().naive_utc().to_string(), action.to_string()];
+//     fn add(&mut self, new_agg: Aggregate) -> Result<(), RepeatedAggregate> {
+//         match self.fst {
+//             None => {
+//                 self.fst = Some(new_agg);
+//                 Ok(())
+//             }
+//             Some(agg) if agg == new_agg => Err(RepeatedAggregate(new_agg)),
+//             Some(_) => {
+//                 if self.snd.is_some() {
+//                     Err(RepeatedAggregate(new_agg))
+//                 } else {
+//                     self.snd = Some(new_agg);
+//                     Ok(())
+//                 }
+//             }
+//         }
+//     }
+// }
 
-                    // ▪ Filter columns are in the following order: "action", "origin", "brand_id", "category_id".
-                    if let Some(origin) = origin.clone() {
-                        columns.push(origin);
-                    }
-                    if let Some(brand_id) = brand_id.clone() {
-                        columns.push(brand_id);
-                    }
-                    if let Some(category_id) = category_id.clone() {
-                        columns.push(category_id);
-                    }
+// #[derive(Debug, Clone)]
+// struct UseCase3Params {
+//     time_range: TimeRange,
+//     action: Action,
+//     aggregates: Aggregates,
+//     origin: Option<String>,
+//     brand_id: Option<String>,
+//     category_id: Option<String>,
+// }
 
-                    for agg in [fst, snd].into_iter().flatten() {
-                        let agg_val = match agg {
-                            Aggregate::Count => count.to_string(),
-                            Aggregate::SumPrice => sum_price.to_string(),
-                        };
-                        columns.push(agg_val);
-                    }
+// use std::fmt;
 
-                    columns
-                },
-            )
-            .collect();
+// use serde::de::{self, Deserializer, MapAccess};
 
-        Self { columns, rows }
-    }
-}
+// impl<'de> Deserialize<'de> for UseCase3Params {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         #[derive(Deserialize)]
+//         #[serde(field_identifier, rename_all = "snake_case")]
+//         enum Field {
+//             TimeRange,
+//             Action,
+//             Aggregates,
+//             Origin,
+//             BrandId,
+//             CategoryId,
+//         }
 
-#[axum_macros::debug_handler] // <- this provides better error messages
-async fn use_case_3(
-    State(system): State<AppState>, // extract state in this handler
-    // params: Result<Query<UseCase3Params>, QueryRejection>, <-- for debug
-    Query(params): Query<UseCase3Params>,
-) -> Result<Json<UseCase3Response>, StatusCode> {
-    unimplemented!()
-}
+//         struct UseCase3ParamsVisitor;
+//         impl<'de> Visitor<'de> for UseCase3ParamsVisitor {
+//             type Value = UseCase3Params;
+
+//             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+//                 formatter.write_str("struct UseCase3Params")
+//             }
+
+//             fn visit_map<V>(self, mut map: V) -> Result<UseCase3Params, V::Error>
+//             where
+//                 V: MapAccess<'de>,
+//             {
+//                 let mut action = None;
+//                 let mut origin = None;
+//                 let mut time_range = None;
+//                 let mut brand_id = None;
+//                 let mut category_id = None;
+//                 let mut aggregates = Aggregates::new();
+//                 while let Some(key) = map.next_key()? {
+//                     match key {
+//                         Field::Action => {
+//                             if action.is_some() {
+//                                 return Err(de::Error::duplicate_field("action"));
+//                             }
+//                             action = Some(map.next_value()?);
+//                         }
+//                         Field::Origin => {
+//                             if origin.is_some() {
+//                                 return Err(de::Error::duplicate_field("origin"));
+//                             }
+//                             origin = Some(map.next_value()?);
+//                         }
+//                         Field::TimeRange => {
+//                             if time_range.is_some() {
+//                                 return Err(de::Error::duplicate_field("time_range"));
+//                             }
+//                             time_range = Some(map.next_value()?);
+//                         }
+//                         Field::BrandId => {
+//                             if brand_id.is_some() {
+//                                 return Err(de::Error::duplicate_field("brand_id"));
+//                             }
+//                             brand_id = Some(map.next_value()?);
+//                         }
+//                         Field::CategoryId => {
+//                             if category_id.is_some() {
+//                                 return Err(de::Error::duplicate_field("category_id"));
+//                             }
+//                             category_id = Some(map.next_value()?);
+//                         }
+//                         Field::Aggregates => aggregates
+//                             .add(map.next_value()?)
+//                             .map_err(de::Error::custom)?,
+//                     }
+//                 }
+//                 let action = action.ok_or_else(|| de::Error::missing_field("action"))?;
+//                 let time_range =
+//                     time_range.ok_or_else(|| de::Error::missing_field("time_range"))?;
+//                 Ok(UseCase3Params {
+//                     time_range,
+//                     action,
+//                     aggregates,
+//                     origin,
+//                     brand_id,
+//                     category_id,
+//                 })
+//             }
+//         }
+
+//         const FIELDS: &[&str] = &[
+//             "origin",
+//             "action",
+//             "time_range",
+//             "brand_id",
+//             "category_id",
+//             "aggregates",
+//         ];
+//         deserializer.deserialize_struct("UseCase3Params", FIELDS, UseCase3ParamsVisitor)
+//     }
+// }
+
+// ///////// Example of response for use case 3
+// // {
+// //     "columns": ["1m_bucket", "action", "brand_id", "sum_price", "count"],
+// //     "rows": [
+// //       ["2022-03-01T00:05:00", "BUY", "Nike", "1000", "3"],
+// //       ["2022-03-01T00:06:00", "BUY", "Nike", "1500", "4"],
+// //       ["2022-03-01T00:07:00", "BUY", "Nike", "1200", "2"]
+// // }
+// #[derive(Serialize)]
+// struct UseCase3Response {
+//     /*
+//     ▪ First column is called "1m_bucket" .
+//     ▪ Bucket values have format: 2022-03-01T00:05:00
+//     ▪ They represent bucket start (second precision, full
+//     minutes).
+//     ▪ Only start of the bucket is needed, because bucket size is
+//     fixed (1 minute).
+//     ▪ Buckets are inclusive at their beginnings and exclusive at
+//     their ends.
+//     ▪ Filter columns are in the following order: "action", "origin",
+//     "brand_id", "category_id" .
+//     ▪ Include only those with not-null values (i.e. present in the
+//     query, but with the order defined above).
+//     ▪ Aggregate columns are listed in the order from the query.
+//     ▪ ALL VALUES ARE STRINGS (including aggregates: count,
+//     sum_price).
+//     */
+//     columns: Vec<String>,
+//     rows: Vec<Vec<String>>,
+// }
+
+// impl UseCase3Response {
+//     fn new(params: UseCase3Params, buckets: impl Iterator<Item = Bucket>) -> Self {
+//         let UseCase3Params {
+//             action,
+//             aggregates: Aggregates { fst, snd },
+//             origin,
+//             brand_id,
+//             category_id,
+//             ..
+//         } = params;
+
+//         // ▪ First column is called "1m_bucket".
+//         // Action is mandatory as well.
+//         let mut columns = vec!["1m_bucket".to_owned(), "action".to_owned()];
+
+//         // ▪ Filter columns are in the following order: "action", "origin", "brand_id", "category_id".
+//         if origin.is_some() {
+//             columns.push("origin".to_owned());
+//         }
+//         if brand_id.is_some() {
+//             columns.push("brand_id".to_owned());
+//         }
+//         if category_id.is_some() {
+//             columns.push("category_id".to_owned());
+//         }
+
+//         for agg in [fst, snd].into_iter().flatten() {
+//             columns.push(agg.display().to_owned());
+//         }
+
+//         let rows = buckets
+//             .map(
+//                 |Bucket {
+//                      minute,
+//                      count,
+//                      sum_price,
+//                  }| {
+//                     let mut columns =
+//                         vec![minute.inner().naive_utc().to_string(), action.to_string()];
+
+//                     // ▪ Filter columns are in the following order: "action", "origin", "brand_id", "category_id".
+//                     if let Some(origin) = origin.clone() {
+//                         columns.push(origin);
+//                     }
+//                     if let Some(brand_id) = brand_id.clone() {
+//                         columns.push(brand_id);
+//                     }
+//                     if let Some(category_id) = category_id.clone() {
+//                         columns.push(category_id);
+//                     }
+
+//                     for agg in [fst, snd].into_iter().flatten() {
+//                         let agg_val = match agg {
+//                             Aggregate::Count => count.to_string(),
+//                             Aggregate::SumPrice => sum_price.to_string(),
+//                         };
+//                         columns.push(agg_val);
+//                     }
+
+//                     columns
+//                 },
+//             )
+//             .collect();
+
+//         Self { columns, rows }
+//     }
+// }
+
+// #[axum_macros::debug_handler] // <- this provides better error messages
+// async fn use_case_3(
+//     State(system): State<AppState>, // extract state in this handler
+//     // params: Result<Query<UseCase3Params>, QueryRejection>, <-- for debug
+//     Query(params): Query<UseCase3Params>,
+// ) -> Result<Json<UseCase3Response>, StatusCode> {
+//     unimplemented!()
+// }
 
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
 
     use tokio::sync::oneshot;
-    use tracing::{info, instrument::WithSubscriber};
+    use tracing::instrument::WithSubscriber;
 
     use crate::mock::{self, tests::build_system_and_register_tags};
 

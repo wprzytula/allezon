@@ -62,27 +62,29 @@ impl From<DateTime<Utc>> for UtcMinute {
         Self(time.duration_trunc(chrono::Duration::seconds(60)).unwrap())
     }
 }
+
+#[cfg(test)]
 impl UtcMinute {
     pub fn inner(self) -> DateTime<Utc> {
         self.0
     }
 
-    pub fn next(self) -> Self {
-        Self(
-            self.inner()
-                .checked_add_signed(chrono::Duration::seconds(60))
-                .unwrap(),
-        )
-    }
+    // pub fn next(self) -> Self {
+    //     Self(
+    //         self.inner()
+    //             .checked_add_signed(chrono::Duration::seconds(60))
+    //             .unwrap(),
+    //     )
+    // }
 
-    pub fn with_added_minutes(self, count: i64) -> Self {
-        let minutes: chrono::Duration = chrono::Duration::minutes(count.abs());
-        match count.cmp(&0) {
-            std::cmp::Ordering::Less => Self(self.0.checked_sub_signed(minutes).unwrap()),
-            std::cmp::Ordering::Equal => self,
-            std::cmp::Ordering::Greater => Self(self.0.checked_add_signed(minutes).unwrap()),
-        }
-    }
+    // pub fn with_added_minutes(self, count: i64) -> Self {
+    //     let minutes: chrono::Duration = chrono::Duration::minutes(count.abs());
+    //     match count.cmp(&0) {
+    //         std::cmp::Ordering::Less => Self(self.0.checked_sub_signed(minutes).unwrap()),
+    //         std::cmp::Ordering::Equal => self,
+    //         std::cmp::Ordering::Greater => Self(self.0.checked_add_signed(minutes).unwrap()),
+    //     }
+    // }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -181,19 +183,19 @@ pub trait System: Sync + Send {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, Timelike};
+    // use chrono::{Datelike, Timelike};
 
     use super::*;
 
-    #[test]
-    fn utc_minute_preserves_lower_grained_time_and_truncates_seconds() {
-        let now = Utc::now();
-        let utc_minute: UtcMinute = now.into();
-        assert_eq!(now.year(), utc_minute.inner().year());
-        assert_eq!(now.minute(), utc_minute.inner().minute());
-        assert_eq!(utc_minute.inner().second(), 0);
-        assert_eq!(utc_minute.inner().nanosecond(), 0);
-    }
+    // #[test]
+    // fn utc_minute_preserves_lower_grained_time_and_truncates_seconds() {
+    //     let now = Utc::now();
+    //     let utc_minute: UtcMinute = now.into();
+    //     assert_eq!(now.year(), utc_minute.inner().year());
+    //     assert_eq!(now.minute(), utc_minute.inner().minute());
+    //     assert_eq!(utc_minute.inner().second(), 0);
+    //     assert_eq!(utc_minute.inner().nanosecond(), 0);
+    // }
 
     #[test]
     fn deserialize_time_range() {

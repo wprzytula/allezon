@@ -53,7 +53,7 @@ impl DataSet {
         let action = config
             .action
             .unwrap_or_else(|| *self.actions.choose(rng).unwrap());
-        let time = config.time.unwrap_or_else(|| Utc::now());
+        let time = config.time.unwrap_or_else(Utc::now);
         let correct_time = DateTime::<Utc>::from_utc(
             time.naive_utc()
                 .with_nanosecond(time.nanosecond() - time.nanosecond() % 1_000_000)
@@ -65,7 +65,7 @@ impl DataSet {
             time: correct_time,
             cookie,
             country: self.countries.choose(rng).unwrap().clone(),
-            device: self.devices.choose(rng).unwrap().clone(),
+            device: *self.devices.choose(rng).unwrap(),
             action,
             origin: self.origins.choose(rng).unwrap().clone(),
             product_info: types::ProductInfo {
