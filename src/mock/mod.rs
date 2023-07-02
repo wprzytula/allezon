@@ -5,7 +5,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use crate::types::{self, Action, UserProfile, UserTag};
+use crate::{
+    types::{self, Action, UserProfile, UserTag},
+    utils,
+};
 
 const MAX_TAGS_BY_COOKIE: usize = 200;
 
@@ -169,6 +172,8 @@ impl types::System for System {
                 views: Default::default(),
                 buys: Default::default(),
             });
+
+        utils::check_user_profile(&profile, time_from, time_to, limit);
         profile
     }
 

@@ -4,7 +4,7 @@ use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
 
-use crate::types;
+use crate::{types, utils};
 
 pub struct Session {
     session: scylla::Session,
@@ -171,11 +171,14 @@ impl types::System for Session {
             user_tags.into_iter().take(limit).collect::<Vec<_>>()
         };
 
-        types::UserProfile {
+        let profile = types::UserProfile {
             cookie: cookie.to_string(),
             views: load_action(types::Action::View).await,
             buys: load_action(types::Action::Buy).await,
-        }
+        };
+
+        utils::check_user_profile(&profile, time_from, time_to, limit);
+        profile
     }
 
     async fn clear(&self) {

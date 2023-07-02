@@ -65,31 +65,23 @@ impl TestData {
         }
     }
 
-    pub async fn check_user_profile(&self, cookie: String) {
+    pub async fn check_user_profile(&self, cookie: String, limit: usize) {
+        let time_now = chrono::Utc::now();
+        let time_from = time_now - chrono::Duration::days(1);
+        let time_to = time_now;
+
         let mock_profile = self
             .mock_client
-            .use_case_2(
-                cookie.clone(),
-                chrono::Utc::now() - chrono::Duration::days(1),
-                chrono::Utc::now(),
-                200,
-            )
-            .await
-            .unwrap();
+            .last_tags_by_cookie(cookie.as_str(), time_from, time_to, limit)
+            .await;
 
         let scylla_profile = self
             .scylla_client
-            .use_case_2(
-                cookie.clone(),
-                chrono::Utc::now() - chrono::Duration::days(1),
-                chrono::Utc::now(),
-                200,
-            )
-            .await
-            .unwrap();
+            .last_tags_by_cookie(cookie.as_str(), time_from, time_to, 200)
+            .await;
 
-        Self::check_user_profile_correct(&mock_profile);
-        Self::check_user_profile_correct(&scylla_profile);
+        utils::check_user_profile(&mock_profile, time_from, time_to, limit);
+        utils::check_user_profile(&scylla_profile, time_from, time_to, limit);
 
         assert_eq!(mock_profile.cookie, cookie);
         assert_eq!(scylla_profile.cookie, cookie);

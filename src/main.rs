@@ -8,6 +8,7 @@ mod scylla;
 #[cfg(test)]
 mod tests;
 mod types;
+mod utils;
 
 #[derive(Parser, Debug)]
 struct Args {
