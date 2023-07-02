@@ -2,56 +2,53 @@ use std::collections::HashSet;
 
 use pretty_assertions::assert_eq;
 
-use super::client;
 use super::dataset;
+use crate::mock;
+use crate::scylla;
 use crate::types;
+use crate::types::System;
+use crate::utils;
 
 pub struct TestData {
-    scylla_client: client::Client,
-    mock_client: client::Client,
+    scylla_client: scylla::Session,
+    mock_client: mock::System,
     dataset: dataset::DataSet,
 }
 
 impl TestData {
-    pub fn new(scylla_url: String, mock_url: String) -> Self {
+    pub async fn new(scylla_url: &str) -> Self {
         Self {
-            scylla_client: client::Client::new(scylla_url),
-            mock_client: client::Client::new(mock_url),
+            scylla_client: scylla::Session::new(scylla_url).await,
+            mock_client: mock::System::new(),
             dataset: dataset::DataSet::new(),
         }
     }
 
-    pub fn from_env() -> Self {
+    pub async fn from_env() -> Self {
         Self::new(
-            std::env::var("SCYLLA_URL").expect("SCYLLA_URL env variable is not set"),
-            std::env::var("MOCK_URL").expect("MOCK_URL env variable is not set"),
+            std::env::var("SCYLLA_URL")
+                .expect("SCYLLA_URL env variable is not set")
+                .as_str(),
         )
+        .await
     }
 
-    pub async fn create_user_tags_for_user(&self, cookie: String, user_tags_number: usize) {
-        for _ in 0..user_tags_number {
+    pub async fn create_user_tags_for_user(
+        &self,
+        cookie: String,
+        user_tags_number: usize,
+        action: Option<types::Action>,
+    ) {
+        let now = chrono::Utc::now();
+        for i in 0..user_tags_number {
             let user_tag = self.dataset.random_user_tag(dataset::UserTagConfig {
                 cookie: Some(cookie.clone()),
+                action: action.clone(),
+                time: Some(now - chrono::Duration::milliseconds(i as i64)),
                 ..Default::default()
             });
-            self.scylla_client
-                .use_case_1(&user_tag)
-                .await
-                .unwrap();
-            self.mock_client.use_case_1(&user_tag).await.unwrap();
-        }
-    }
-
-    fn check_user_profile_correct(profile: &types::UserProfile) {
-        assert!(profile.buys.len() <= 200);
-        assert!(profile.views.len() <= 200);
-
-        for i in 1..profile.buys.len() {
-            assert!(profile.buys[i - 1].time >= profile.buys[i].time);
-        }
-
-        for i in 1..profile.views.len() {
-            assert!(profile.views[i - 1].time >= profile.views[i].time);
+            self.scylla_client.register_user_tag(user_tag.clone()).await;
+            self.mock_client.register_user_tag(user_tag.clone()).await;
         }
     }
 

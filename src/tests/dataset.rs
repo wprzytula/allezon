@@ -1,8 +1,9 @@
-use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
+use chrono::prelude::*;
+use rand::{seq::SliceRandom, Rng};
 use std::collections::HashSet;
 
+use super::utils::random_string;
 use crate::types;
-use chrono::prelude::*;
 
 pub struct DataSet {
     cookies: Vec<String>,
@@ -18,14 +19,7 @@ pub struct DataSet {
 pub struct UserTagConfig {
     pub cookie: Option<String>,
     pub action: Option<types::Action>,
-}
-
-fn random_string(size: usize) -> String {
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(size)
-        .map(char::from)
-        .collect()
+    pub time: Option<DateTime<Utc>>,
 }
 
 fn init_data_set(size: usize) -> Vec<String> {
@@ -58,17 +52,17 @@ impl DataSet {
             .unwrap_or_else(|| self.cookies.choose(rng).unwrap().clone());
         let action = config
             .action
-            .unwrap_or_else(|| self.actions.choose(rng).unwrap().clone());
-
-        let now: DateTime<Utc> = Utc::now();
+            .unwrap_or_else(|| *self.actions.choose(rng).unwrap());
+        let time = config.time.unwrap_or_else(|| Utc::now());
+        let correct_time = DateTime::<Utc>::from_utc(
+            time.naive_utc()
+                .with_nanosecond(time.nanosecond() - time.nanosecond() % 1_000_000)
+                .unwrap(),
+            Utc,
+        );
 
         types::UserTag {
-            time: DateTime::<Utc>::from_utc(
-                now.naive_utc()
-                    .with_nanosecond(now.nanosecond() - now.nanosecond() % 1_000_000)
-                    .unwrap(),
-                Utc,
-            ),
+            time: correct_time,
             cookie,
             country: self.countries.choose(rng).unwrap().clone(),
             device: self.devices.choose(rng).unwrap().clone(),
