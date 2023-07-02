@@ -1,29 +1,36 @@
-use std::{
-    cmp::Reverse,
-    collections::{BTreeMap, BinaryHeap},
-};
+use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Timelike, Utc};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
-use crate::types::{Action, UserProfile, UserTag, UtcMinute};
+use crate::{
+    types::{self, Action, UserProfile, UserTag},
+    utils,
+};
 
 const MAX_TAGS_BY_COOKIE: usize = 200;
 
 #[derive(Debug)]
-pub struct System {
-    // For 3rd use case - aggregates.
-    tags_by_timestamp: BTreeMap<DateTime<Utc>, Vec<UserTag>>,
+struct SystemData {
+    // // For 3rd use case - aggregates.
+    // tags_by_timestamp: BTreeMap<DateTime<Utc>, Vec<UserTag>>,
 
     // For 2nd use case - user profiles.
     tags_by_cookie: BTreeMap<String, UserProfileInner>,
 }
 
+#[derive(Debug)]
+pub struct System {
+    data: RwLock<SystemData>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct UserProfileInner {
     cookie: String,
-    views: BinaryHeap<Reverse<UserTagByTime>>,
-    buys: BinaryHeap<Reverse<UserTagByTime>>,
+    views: BTreeSet<UserTagByTime>,
+    buys: BTreeSet<UserTagByTime>,
 }
 
 #[derive(Clone, Debug)]
@@ -75,35 +82,42 @@ impl Default for System {
 impl System {
     pub fn new() -> Self {
         Self {
-            tags_by_timestamp: Default::default(),
-            tags_by_cookie: Default::default(),
+            data: RwLock::new(SystemData {
+                // tags_by_timestamp: Default::default(),
+                tags_by_cookie: Default::default(),
+            }),
         }
     }
+}
 
-    pub fn register_user_tag(&mut self, tag: UserTag) {
-        self.tags_by_timestamp
-            .entry(tag.time)
-            .or_default()
-            .push(tag.clone());
+#[async_trait]
+impl types::System for System {
+    async fn register_user_tag(&self, tag: types::UserTag) {
+        let mut data = self.data.write().await;
 
-        self.tags_by_cookie
+        // data.tags_by_timestamp
+        //     .entry(tag.time)
+        //     .or_default()
+        //     .push(tag.clone());
+
+        data.tags_by_cookie
             .entry(tag.cookie.clone())
             .and_modify(|user_profile| {
-                let heap = match tag.action {
+                let set = match tag.action {
                     Action::View => &mut user_profile.views,
                     Action::Buy => &mut user_profile.buys,
                 };
-                heap.push(Reverse(tag.clone().into()));
-                if heap.len() > MAX_TAGS_BY_COOKIE {
-                    heap.pop().unwrap();
+                set.insert(tag.clone().into());
+                if set.len() > MAX_TAGS_BY_COOKIE {
+                    set.pop_first();
                 }
             })
             .or_insert_with(|| {
-                let heap = std::iter::once(Reverse(UserTagByTime::from(tag.clone())))
-                    .collect::<BinaryHeap<_>>();
+                let set =
+                    std::iter::once(UserTagByTime::from(tag.clone())).collect::<BTreeSet<_>>();
                 let (views, buys) = match tag.action {
-                    Action::View => (heap, BinaryHeap::new()),
-                    Action::Buy => (BinaryHeap::new(), heap),
+                    Action::View => (set, BTreeSet::new()),
+                    Action::Buy => (BTreeSet::new(), set),
                 };
                 UserProfileInner {
                     cookie: tag.cookie.clone(),
@@ -113,7 +127,7 @@ impl System {
             });
     }
 
-    pub fn last_tags_by_cookie<'a>(
+    async fn last_tags_by_cookie<'a>(
         &'a self,
         cookie: &'a str,
         time_from: DateTime<Utc>,
@@ -121,17 +135,20 @@ impl System {
         limit: usize,
     ) -> UserProfile {
         assert!(limit <= MAX_TAGS_BY_COOKIE);
-        let profile = self
+
+        let data = self.data.read().await;
+
+        let profile = data
             .tags_by_cookie
             .get(cookie)
             .map(|profile| {
                 fn filtered_iter<'a>(
-                    iter: impl Iterator<Item = &'a Reverse<UserTagByTime>> + DoubleEndedIterator,
+                    iter: impl Iterator<Item = &'a UserTagByTime> + DoubleEndedIterator,
                     time_from: DateTime<Utc>,
                     time_to: DateTime<Utc>,
                     limit: usize,
                 ) -> impl Iterator<Item = &'a UserTag> {
-                    iter.map(|tag| &tag.0 .0)
+                    iter.map(|tag| &tag.0)
                         .rev()
                         .skip_while(move |tag| tag.time > time_to)
                         .take_while(move |tag| tag.time >= time_from)
@@ -155,137 +172,15 @@ impl System {
                 views: Default::default(),
                 buys: Default::default(),
             });
+
+        utils::check_user_profile(&profile, time_from, time_to, limit);
         profile
     }
 
-    pub fn aggregate<'a>(
-        &'a self,
-        time_from: UtcMinute,
-        time_to: UtcMinute,
-        action: Action,
-        origin: Option<&'a str>,
-        brand_id: Option<&'a str>,
-        category_id: Option<&'a str>,
-    ) -> impl Iterator<Item = Bucket> + 'a {
-        assert!(time_from < time_to);
-        let range = self
-            .tags_by_timestamp
-            .range(time_from.inner()..time_to.inner());
-
-        struct BucketIter<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> {
-            min_curr: UtcMinute,
-            min_to: UtcMinute,
-            it: std::iter::Peekable<It>,
-            action: Action,
-            origin: Option<&'a str>,
-            brand_id: Option<&'a str>,
-            category_id: Option<&'a str>,
-        }
-
-        impl<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> BucketIter<'a, It> {
-            fn new(
-                time_from: UtcMinute,
-                time_to: UtcMinute,
-                it: It,
-                action: Action,
-                origin: Option<&'a str>,
-                brand_id: Option<&'a str>,
-                category_id: Option<&'a str>,
-            ) -> Self {
-                Self {
-                    min_curr: time_from,
-                    min_to: time_to,
-                    it: it.peekable(),
-                    action,
-                    origin,
-                    brand_id,
-                    category_id,
-                }
-            }
-        }
-        impl<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> Iterator
-            for BucketIter<'a, It>
-        {
-            type Item = Bucket;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                // Find out what bucket we are in
-                let bucket_minute: UtcMinute = self.min_curr;
-
-                // Stop condition
-                if bucket_minute >= self.min_to {
-                    return None;
-                }
-                // (*self.it.peek()?.0).into();
-
-                let mut count = 0;
-                let mut sum_price = 0;
-
-                while let Some((&datetime, tags)) = self.it.peek() {
-                    println!(
-                        "datetime: {} min, bucket: {} min.",
-                        datetime.minute(),
-                        bucket_minute.inner().minute()
-                    );
-                    println!("datetime: {}, bucket: {}.", datetime, bucket_minute.inner());
-                    match UtcMinute::from(datetime).cmp(&bucket_minute) {
-                        std::cmp::Ordering::Less => unreachable!("BTreeMap iter invariant!"),
-                        std::cmp::Ordering::Greater => break, // this belongs already to the next bucket
-                        std::cmp::Ordering::Equal => {
-                            for tag in *tags {
-                                if self.action == tag.action
-                                    && self
-                                        .origin
-                                        .map(|origin| origin == tag.origin)
-                                        .unwrap_or(true)
-                                    && self
-                                        .brand_id
-                                        .map(|brand_id| brand_id == tag.product_info.brand_id)
-                                        .unwrap_or(true)
-                                    && self
-                                        .category_id
-                                        .map(|category_id| {
-                                            category_id == tag.product_info.category_id
-                                        })
-                                        .unwrap_or(true)
-                                {
-                                    count += 1;
-                                    sum_price += tag.product_info.price;
-                                }
-                            }
-
-                            // Advance
-                            self.it.next().unwrap();
-                        }
-                    }
-                }
-                self.min_curr = self.min_curr.next();
-
-                Some(Bucket {
-                    minute: bucket_minute,
-                    count,
-                    sum_price,
-                })
-            }
-        }
-
-        BucketIter::new(
-            time_from,
-            time_to,
-            range,
-            action,
-            origin,
-            brand_id,
-            category_id,
-        )
+    async fn clear(&self) {
+        let mut data = self.data.write().await;
+        data.tags_by_cookie = Default::default();
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Bucket {
-    pub minute: UtcMinute,
-    pub count: usize,
-    pub sum_price: i32,
 }
 
 #[cfg(test)]
@@ -294,7 +189,7 @@ pub mod tests {
 
     use chrono::{NaiveDate, NaiveDateTime};
 
-    use crate::types::{Device, ProductInfo};
+    use crate::types::{Device, ProductInfo, System, UtcMinute};
 
     use super::*;
 
@@ -332,8 +227,8 @@ pub mod tests {
         moment_middle
     }
 
-    pub fn build_system_and_register_tags() -> (System, TestMinutes) {
-        let mut system = System::new();
+    pub async fn build_system_and_register_tags() -> (super::System, TestMinutes) {
+        let system = super::System::new();
 
         let minute_middle: UtcMinute = UtcMinute::from(moment_middle());
 
@@ -372,7 +267,7 @@ pub mod tests {
 
         let tags = tags_min_zero.into_iter();
         for tag in tags {
-            system.register_user_tag(tag);
+            system.register_user_tag(tag).await;
         }
 
         let minutes = TestMinutes {
@@ -384,17 +279,19 @@ pub mod tests {
         (system, minutes)
     }
 
-    #[test]
-    fn use_case_2_profile_contains_valid_tags() {
-        let (system, minutes) = build_system_and_register_tags();
+    #[tokio::test]
+    async fn use_case_2_profile_contains_valid_tags() {
+        let (system, minutes) = build_system_and_register_tags().await;
 
         // limit higher than number of available entries
-        let user_profile = system.last_tags_by_cookie(
-            "cookie",
-            minutes.minute_middle.inner(),
-            minutes.minute_after.inner(),
-            100,
-        );
+        let user_profile = system
+            .last_tags_by_cookie(
+                "cookie",
+                minutes.minute_middle.inner(),
+                minutes.minute_after.inner(),
+                100,
+            )
+            .await;
         assert!(user_profile.views.is_empty());
         assert_eq!(
             user_profile.buys,
@@ -421,12 +318,14 @@ pub mod tests {
         );
 
         // limit lower than number of available entries
-        let user_profile = system.last_tags_by_cookie(
-            "cookie",
-            minutes.minute_middle.inner(),
-            minutes.minute_after.inner(),
-            1,
-        );
+        let user_profile = system
+            .last_tags_by_cookie(
+                "cookie",
+                minutes.minute_middle.inner(),
+                minutes.minute_after.inner(),
+                1,
+            )
+            .await;
         assert_eq!(
             user_profile.buys,
             vec![UserTag {
@@ -438,47 +337,6 @@ pub mod tests {
                 },
                 ..default_tag()
             },]
-        );
-    }
-
-    #[test]
-    fn use_case_3_aggregates_properly() {
-        let (system, minutes) = build_system_and_register_tags();
-        // println!("{:#?}", system);
-
-        assert_eq!(
-            system
-                .aggregate(
-                    minutes.minute_earlier,
-                    minutes.minute_after,
-                    Action::Buy,
-                    None,
-                    None,
-                    None
-                )
-                .collect::<Vec<_>>(),
-            vec![
-                Bucket {
-                    minute: minutes.minute_middle.with_added_minutes(-3),
-                    count: 0,
-                    sum_price: 0
-                },
-                Bucket {
-                    minute: minutes.minute_middle.with_added_minutes(-2),
-                    count: 0,
-                    sum_price: 0
-                },
-                Bucket {
-                    minute: minutes.minute_middle.with_added_minutes(-1),
-                    count: 0,
-                    sum_price: 0
-                },
-                Bucket {
-                    minute: minutes.minute_middle,
-                    count: 2,
-                    sum_price: 50
-                },
-            ]
         );
     }
 }

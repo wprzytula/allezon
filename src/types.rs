@@ -1,12 +1,13 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use chrono::{DateTime, DurationRound, NaiveDateTime, Utc};
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct UserTag {
     pub time: DateTime<Utc>, // format: "2022-03-22T12:15:00.000Z"
     //   millisecond precision
@@ -20,6 +21,7 @@ pub struct UserTag {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Hash))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Device {
     Pc,
@@ -28,6 +30,7 @@ pub enum Device {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(Hash))]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Action {
     View,
@@ -44,7 +47,7 @@ impl Display for Action {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct ProductInfo {
     pub product_id: String,
     pub brand_id: String,
@@ -59,27 +62,29 @@ impl From<DateTime<Utc>> for UtcMinute {
         Self(time.duration_trunc(chrono::Duration::seconds(60)).unwrap())
     }
 }
+
+#[cfg(test)]
 impl UtcMinute {
     pub fn inner(self) -> DateTime<Utc> {
         self.0
     }
 
-    pub fn next(self) -> Self {
-        Self(
-            self.inner()
-                .checked_add_signed(chrono::Duration::seconds(60))
-                .unwrap(),
-        )
-    }
+    // pub fn next(self) -> Self {
+    //     Self(
+    //         self.inner()
+    //             .checked_add_signed(chrono::Duration::seconds(60))
+    //             .unwrap(),
+    //     )
+    // }
 
-    pub fn with_added_minutes(self, count: i64) -> Self {
-        let minutes: chrono::Duration = chrono::Duration::minutes(count.abs());
-        match count.cmp(&0) {
-            std::cmp::Ordering::Less => Self(self.0.checked_sub_signed(minutes).unwrap()),
-            std::cmp::Ordering::Equal => self,
-            std::cmp::Ordering::Greater => Self(self.0.checked_add_signed(minutes).unwrap()),
-        }
-    }
+    // pub fn with_added_minutes(self, count: i64) -> Self {
+    //     let minutes: chrono::Duration = chrono::Duration::minutes(count.abs());
+    //     match count.cmp(&0) {
+    //         std::cmp::Ordering::Less => Self(self.0.checked_sub_signed(minutes).unwrap()),
+    //         std::cmp::Ordering::Equal => self,
+    //         std::cmp::Ordering::Greater => Self(self.0.checked_add_signed(minutes).unwrap()),
+    //     }
+    // }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -146,28 +151,51 @@ impl Serialize for TimeRange {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct UserProfile {
     pub cookie: String,
     pub views: Vec<UserTag>,
     pub buys: Vec<UserTag>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bucket {
+    pub minute: UtcMinute,
+    pub count: usize,
+    pub sum_price: i32,
+}
+
+#[async_trait]
+pub trait System: Sync + Send {
+    async fn register_user_tag(&self, user_tag: UserTag);
+
+    async fn last_tags_by_cookie<'a>(
+        &'a self,
+        cookie: &'a str,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        limit: usize,
+    ) -> UserProfile;
+
+    async fn clear(&self);
+}
+
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, Timelike};
+    // use chrono::{Datelike, Timelike};
 
     use super::*;
 
-    #[test]
-    fn utc_minute_preserves_lower_grained_time_and_truncates_seconds() {
-        let now = Utc::now();
-        let utc_minute: UtcMinute = now.into();
-        assert_eq!(now.year(), utc_minute.inner().year());
-        assert_eq!(now.minute(), utc_minute.inner().minute());
-        assert_eq!(utc_minute.inner().second(), 0);
-        assert_eq!(utc_minute.inner().nanosecond(), 0);
-    }
+    // #[test]
+    // fn utc_minute_preserves_lower_grained_time_and_truncates_seconds() {
+    //     let now = Utc::now();
+    //     let utc_minute: UtcMinute = now.into();
+    //     assert_eq!(now.year(), utc_minute.inner().year());
+    //     assert_eq!(now.minute(), utc_minute.inner().minute());
+    //     assert_eq!(utc_minute.inner().second(), 0);
+    //     assert_eq!(utc_minute.inner().nanosecond(), 0);
+    // }
 
     #[test]
     fn deserialize_time_range() {

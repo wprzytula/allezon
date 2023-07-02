@@ -11,7 +11,7 @@ repository = "https://github.com/wprzytula/allezone"
 # Network utilities
 axum = "0.6"
 axum-macros = "0.3"
-reqwest = "0.11"
+reqwest = { version = "0.11", features = ["json"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 # serde_with = "*"
@@ -26,11 +26,13 @@ tokio = { version = "1.27.0", features = ["full"] }
 futures = "0.3"
 
 # Scylla
-# scylla = { version = "0.8.0", features = ["default"]}
+scylla = { version = "0.8.0", features = ["default"]}
 
 # Observability
 tracing = "0.1" # use this for any logging/tracing
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+
+env_logger = "0.10.0"
 
 # Errors
 # anyhow = "1.0.70" # use this for weakly-typed errors
@@ -44,13 +46,15 @@ either = "1.8"
 # To be considered
 # rand = "0.8.3"
 # itertools = "0.10"
-# async-trait = "0.1"
+async-trait = "0.1"
 # serde = { version = "1.0", features = ["derive"] }
 # serde_yaml = { version = "0.9.14", optional = true }
 
 # Utilities
 clap = { version = "4.2.1", features = ["derive"] }
+rand = "0.8.5"
 
+pretty_assertions = "1.2.1"
 
 [dev-dependencies]
 # ntest = "0.8.1"

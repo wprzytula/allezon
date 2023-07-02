@@ -1,17 +1,28 @@
 use clap::Parser;
 use std::net::ToSocketAddrs;
+use tracing::log;
 
 mod endpoints;
 mod mock;
-pub mod types;
+mod scylla;
+#[cfg(test)]
+mod tests;
+mod types;
+mod utils;
 
 #[derive(Parser, Debug)]
 struct Args {
     #[arg(short, long, default_value = "127.0.0.1")]
     address: String,
 
-    #[arg(short, long, default_value_t = 9042)]
+    #[arg(short, long, default_value_t = 8080)]
     port: u16,
+
+    #[arg(short, long, default_value = "127.0.0.1:9042")]
+    scylla_uri: String,
+
+    #[arg(short, long, action)]
+    mock: bool,
 }
 
 async fn shutdown_signal() {
@@ -23,6 +34,7 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let args = Args::parse();
 
     let socket_address = (args.address, args.port)
@@ -30,9 +42,18 @@ async fn main() {
         .expect("Failed to parse socket address")
         .next()
         .expect("Failed to parse socket address");
-    println!("Starting server on {}", socket_address);
 
-    let router = endpoints::build_router(mock::System::new());
+    let router: axum::Router;
+
+    if !args.mock {
+        router = endpoints::build_router(scylla::Session::new(&args.scylla_uri).await);
+        log::info!("Connected to Scylla on {}", args.scylla_uri);
+    } else {
+        router = endpoints::build_router(mock::System::new());
+        log::info!("Starting in mock mode");
+    }
+
+    log::info!("Starting server on {}", socket_address);
     let server = axum::Server::bind(&socket_address)
         .serve(router.into_make_service())
         .with_graceful_shutdown(shutdown_signal());
