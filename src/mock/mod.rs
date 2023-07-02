@@ -1,7 +1,4 @@
-use std::{
-    cmp::Reverse,
-    collections::{BTreeMap, BinaryHeap},
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -29,8 +26,8 @@ pub struct System {
 #[derive(Clone, Debug, Serialize)]
 struct UserProfileInner {
     cookie: String,
-    views: BinaryHeap<Reverse<UserTagByTime>>,
-    buys: BinaryHeap<Reverse<UserTagByTime>>,
+    views: BTreeSet<UserTagByTime>,
+    buys: BTreeSet<UserTagByTime>,
 }
 
 #[derive(Clone, Debug)]
@@ -103,21 +100,21 @@ impl types::System for System {
         data.tags_by_cookie
             .entry(tag.cookie.clone())
             .and_modify(|user_profile| {
-                let heap = match tag.action {
+                let set = match tag.action {
                     Action::View => &mut user_profile.views,
                     Action::Buy => &mut user_profile.buys,
                 };
-                heap.push(Reverse(tag.clone().into()));
-                if heap.len() > MAX_TAGS_BY_COOKIE {
-                    heap.pop().unwrap();
+                set.insert(tag.clone().into());
+                if set.len() > MAX_TAGS_BY_COOKIE {
+                    set.pop_first();
                 }
             })
             .or_insert_with(|| {
-                let heap = std::iter::once(Reverse(UserTagByTime::from(tag.clone())))
-                    .collect::<BinaryHeap<_>>();
+                let set =
+                    std::iter::once(UserTagByTime::from(tag.clone())).collect::<BTreeSet<_>>();
                 let (views, buys) = match tag.action {
-                    Action::View => (heap, BinaryHeap::new()),
-                    Action::Buy => (BinaryHeap::new(), heap),
+                    Action::View => (set, BTreeSet::new()),
+                    Action::Buy => (BTreeSet::new(), set),
                 };
                 UserProfileInner {
                     cookie: tag.cookie.clone(),
@@ -143,12 +140,12 @@ impl types::System for System {
             .get(cookie)
             .map(|profile| {
                 fn filtered_iter<'a>(
-                    iter: impl Iterator<Item = &'a Reverse<UserTagByTime>> + DoubleEndedIterator,
+                    iter: impl Iterator<Item = &'a UserTagByTime> + DoubleEndedIterator,
                     time_from: DateTime<Utc>,
                     time_to: DateTime<Utc>,
                     limit: usize,
                 ) -> impl Iterator<Item = &'a UserTag> {
-                    iter.map(|tag| &tag.0 .0)
+                    iter.map(|tag| &tag.0)
                         .rev()
                         .skip_while(move |tag| tag.time > time_to)
                         .take_while(move |tag| tag.time >= time_from)
