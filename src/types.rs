@@ -183,6 +183,16 @@ pub trait System: Sync + Send {
         limit: usize,
     ) -> UserProfile;
 
+    async fn select_bucket_stats(
+        &self,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        action: Action,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+    ) -> Vec<Bucket>;
+
     async fn clear(&self);
 }
 

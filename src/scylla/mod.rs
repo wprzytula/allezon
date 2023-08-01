@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use scylla::batch::{Batch, BatchStatement, BatchType};
+use scylla::frame::response::result::CqlValue;
+use scylla::frame::value::Counter;
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
 use tracing::debug;
 
-use crate::types::{Action, UtcMinute};
+use crate::types::{Action, Bucket, UtcMinute};
 use crate::{types, utils};
 
 pub struct Session {
@@ -241,6 +243,105 @@ impl Session {
             .await
             .unwrap();
     }
+
+    async fn select_bucket_stats_impl(
+        &self,
+        bucket: DateTime<Utc>,
+        action: Action,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+    ) -> Bucket {
+        let query_result = match (origin, brand_id, category_id) {
+            (None, None, None) => {
+                self.session
+                    .execute(&self.select_bucket_stats_all, (bucket, action.to_string()))
+                    .await
+            }
+            (Some(origin), None, None) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_origin,
+                        (bucket, action.to_string(), origin),
+                    )
+                    .await
+            }
+            (None, Some(brand_id), None) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_brand,
+                        (bucket, action.to_string(), brand_id),
+                    )
+                    .await
+            }
+            (None, None, Some(category_id)) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_category,
+                        (bucket, action.to_string(), category_id),
+                    )
+                    .await
+            }
+            (Some(origin), Some(brand_id), None) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_origin_brand,
+                        (bucket, action.to_string(), origin, brand_id),
+                    )
+                    .await
+            }
+            (Some(origin), None, Some(category_id)) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_origin_category,
+                        (bucket, action.to_string(), origin, category_id),
+                    )
+                    .await
+            }
+            (None, Some(brand_id), Some(category_id)) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_brand_category,
+                        (bucket, action.to_string(), brand_id, category_id),
+                    )
+                    .await
+            }
+            (Some(origin), Some(brand_id), Some(category_id)) => {
+                self.session
+                    .execute(
+                        &self.select_bucket_stats_origin_brand_category,
+                        (bucket, action.to_string(), origin, brand_id, category_id),
+                    )
+                    .await
+            }
+        }
+        .unwrap();
+
+        dbg!(&query_result.rows);
+
+        // Ugly as hell, but lets us preserve unified match above
+        // (no differentiating between Counter and BigInt returned).
+        let row = query_result.first_row().unwrap();
+        let mut cols_iter = row.columns.into_iter();
+        let count_cql = cols_iter.next().unwrap().unwrap();
+        let sum_cql = cols_iter.next().unwrap().unwrap();
+        assert!(cols_iter.next().is_none());
+        let (count, sum) = match (count_cql, sum_cql) {
+            // Counter is returned for non-aggregate queries
+            (CqlValue::Counter(Counter(count)), CqlValue::Counter(Counter(sum))) => (count, sum),
+
+            // BigInt is returned for aggregate queries
+            (CqlValue::BigInt(count), CqlValue::BigInt(sum)) => (count, sum),
+
+            (count_cql, sum_cql) => panic!("Unexpected CqlVal: ({:?}, {:?})", count_cql, sum_cql),
+        };
+
+        Bucket {
+            minute: bucket.into(),
+            count: count as i32,
+            sum_price: sum as i32,
+        }
+    }
 }
 
 #[async_trait]
@@ -324,6 +425,26 @@ impl types::System for Session {
 
         utils::check_user_profile(&profile, time_from, time_to, limit);
         profile
+    }
+
+    async fn select_bucket_stats(
+        &self,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        action: Action,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+    ) -> Vec<Bucket> {
+        let time_to = UtcMinute::from(time_to);
+        let futures = std::iter::successors(Some(UtcMinute::from(time_from)), |last| {
+            let next = last.next();
+            (next < time_to).then_some(next)
+        })
+        .map(|bucket| {
+            self.select_bucket_stats_impl(bucket.inner(), action, origin, brand_id, category_id)
+        });
+        futures::future::join_all(futures).await
     }
 
     async fn clear(&self) {
