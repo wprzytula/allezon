@@ -4,7 +4,9 @@ use scylla::batch::{Batch, BatchStatement, BatchType};
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
+use tracing::debug;
 
+use crate::types::{Action, UtcMinute};
 use crate::{types, utils};
 
 pub struct Session {
@@ -194,6 +196,51 @@ impl Session {
 
         }
     }
+
+    async fn update_bucket_stats(
+        &self,
+        bucket: UtcMinute,
+        action: Action,
+        origin: &str,
+        brand_id: &str,
+        category_id: &str,
+        price: i64,
+    ) {
+        debug!("Updating bucket stats for bucket {}", bucket);
+        self.session
+            .batch(
+                &self.update_bucket_stats,
+                (
+                    // obc
+                    (
+                        price,
+                        bucket.inner(),
+                        action.to_string(),
+                        origin,
+                        brand_id,
+                        category_id,
+                    ),
+                    // co
+                    (
+                        price,
+                        bucket.inner(),
+                        action.to_string(),
+                        category_id,
+                        origin,
+                    ),
+                    // bc
+                    (
+                        price,
+                        bucket.inner(),
+                        action.to_string(),
+                        brand_id,
+                        category_id,
+                    ),
+                ),
+            )
+            .await
+            .unwrap();
+    }
 }
 
 #[async_trait]
@@ -203,6 +250,17 @@ impl types::System for Session {
         let user_tag_cookie = user_tag.cookie.clone();
         let user_tag_action =
             serde_json::to_string(&user_tag.action).expect("Failed to serialize user tag action");
+
+        self.update_bucket_stats(
+            user_tag_time.into(),
+            user_tag.action,
+            &user_tag.origin,
+            &user_tag.product_info.brand_id,
+            &user_tag.product_info.category_id,
+            user_tag.product_info.price as i64,
+        )
+        .await;
+
         let db_user_tag = UserTag::new(user_tag).expect("Failed to create UserTag");
 
         self.session
