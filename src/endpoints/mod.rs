@@ -394,10 +394,7 @@ mod tests {
     // $ RUST_LOG=<level> cargo test
     // where level \in {trace, debug, info, warn, error}
     fn init_logger() {
-        let _ = tracing_subscriber::fmt::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .without_time()
-            .try_init();
+        let _ = tracing_subscriber::fmt::fmt().without_time().try_init();
     }
 
     #[tokio::test]

@@ -30,9 +30,7 @@ scylla = { version = "0.8.0", features = ["default"]}
 
 # Observability
 tracing = "0.1" # use this for any logging/tracing
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-
-env_logger = "0.10.0"
+tracing-subscriber = { version = "0.3.17" }
 
 # Errors
 # anyhow = "1.0.70" # use this for weakly-typed errors

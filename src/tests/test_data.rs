@@ -25,6 +25,7 @@ impl TestData {
     }
 
     pub async fn from_env() -> Self {
+        let _ = tracing_subscriber::fmt::try_init();
         Self::new(
             std::env::var("SCYLLA_URL")
                 .expect("SCYLLA_URL env variable is not set")
