@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use scylla::batch::{Batch, BatchStatement, BatchType};
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
@@ -8,9 +9,23 @@ use crate::{types, utils};
 
 pub struct Session {
     session: scylla::Session,
+    // use case 1
     insert_user_tag: PreparedStatement,
+    update_bucket_stats: Batch,
+
+    // use case 2
     select_last_tags_by_cookie: PreparedStatement,
     delete_old_tags_by_cookie: PreparedStatement,
+
+    // use case 3
+    select_bucket_stats_all: PreparedStatement,
+    select_bucket_stats_origin: PreparedStatement,
+    select_bucket_stats_brand: PreparedStatement,
+    select_bucket_stats_category: PreparedStatement,
+    select_bucket_stats_origin_brand: PreparedStatement,
+    select_bucket_stats_origin_category: PreparedStatement,
+    select_bucket_stats_brand_category: PreparedStatement,
+    select_bucket_stats_origin_brand_category: PreparedStatement,
 }
 
 #[derive(FromUserType, IntoUserType, Debug)]
@@ -80,6 +95,26 @@ impl Session {
             .unwrap();
         session.query("CREATE TYPE IF NOT EXISTS user_tag (country text, device text, origin text, product_info frozen<product_info>)", ()).await.unwrap();
         session.query("CREATE TABLE IF NOT EXISTS user_tags (cookie text, action text, time timestamp, tag frozen<user_tag>, PRIMARY KEY ((cookie, action), time)) WITH CLUSTERING ORDER BY (time DESC)", ()).await.unwrap();
+        session
+            .query("TRUNCATE TABLE user_tags", &[])
+            .await
+            .unwrap();
+        // TODO: as TTL is not applicable to counter columns, add a task that deletes old entries each hour
+        session.query("CREATE TABLE IF NOT EXISTS buckets_obc (bucket timestamp, action text, origin text, brand_id text, category_id text, count counter, sum counter, PRIMARY KEY((bucket, action), origin, brand_id, category_id))", ()).await.unwrap();
+        session
+            .query("TRUNCATE TABLE buckets_obc", &[])
+            .await
+            .unwrap();
+        session.query("CREATE TABLE IF NOT EXISTS buckets_co (bucket timestamp, action text, origin text,  category_id text, count counter, sum counter, PRIMARY KEY((bucket, action), category_id, origin))", ()).await.unwrap();
+        session
+            .query("TRUNCATE TABLE buckets_co", &[])
+            .await
+            .unwrap();
+        session.query("CREATE TABLE IF NOT EXISTS buckets_bc (bucket timestamp, action text, brand_id text, category_id text, count counter, sum counter, PRIMARY KEY((bucket, action), brand_id, category_id))", ()).await.unwrap();
+        session
+            .query("TRUNCATE TABLE buckets_bc", &[])
+            .await
+            .unwrap();
     }
 
     pub async fn new(uri: &str) -> Self {
@@ -91,7 +126,7 @@ impl Session {
 
         Self::prepare(&session).await;
 
-        Session {
+        Self {
             insert_user_tag: session
                 .prepare("INSERT INTO user_tags (cookie, action, time, tag) VALUES (?, ?, ?, ?)")
                 .await
@@ -104,7 +139,59 @@ impl Session {
                 .prepare("DELETE FROM user_tags WHERE cookie = ? AND action = ? AND time < ?")
                 .await
                 .expect("Failed to prepare delete_old_tags_by_cookie"),
+
+            select_bucket_stats_all: session
+                .prepare("SELECT SUM(count), SUM(sum) FROM buckets_bc WHERE bucket = ? AND action = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_all"),
+            select_bucket_stats_origin: session
+                .prepare("SELECT SUM(count), SUM(sum) FROM buckets_obc WHERE bucket = ? AND action = ? AND origin = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_origin"),
+            select_bucket_stats_brand: session
+                .prepare("SELECT SUM(count), SUM(sum) FROM buckets_bc WHERE bucket = ? AND action = ? AND brand_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_brand"),
+            select_bucket_stats_category: session
+                .prepare("SELECT SUM(count), SUM(sum) FROM buckets_co WHERE bucket = ? AND action = ? AND category_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_category"),
+            select_bucket_stats_origin_brand: session
+                .prepare("SELECT SUM(count), SUM(sum) FROM buckets_obc WHERE bucket = ? AND action = ? AND origin = ? AND brand_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_origin_brand"),
+            select_bucket_stats_origin_category: session
+                .prepare("SELECT count, sum FROM buckets_co WHERE bucket = ? AND action = ? AND origin = ? AND category_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_origin_category"),
+            select_bucket_stats_brand_category: session
+                .prepare("SELECT count, sum FROM buckets_bc WHERE bucket = ? AND action = ? AND brand_id = ? AND category_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_brand_category"),
+            select_bucket_stats_origin_brand_category: session
+                .prepare("SELECT count, sum FROM buckets_obc WHERE bucket = ? AND action = ? AND origin = ? AND brand_id = ? AND category_id = ?")
+                .await
+                .expect("Failed to prepare select_bucket_stats_origin_brand_category"),
+
+            update_bucket_stats: {
+                Batch::new_with_statements(BatchType::Counter, [
+                    session
+                        .prepare("UPDATE buckets_obc SET count = count + 1, sum = sum + ? WHERE bucket = ? AND action = ? AND origin = ? AND brand_id = ? AND category_id = ?")
+                        .await
+                        .expect("Failed to prepare update_bucket_stats_obc"),
+                    session
+                        .prepare("UPDATE buckets_co SET count = count + 1, sum = sum + ? WHERE bucket = ? AND action = ? AND origin = ? AND category_id = ?")
+                        .await
+                        .expect("Failed to prepare update_bucket_stats_co"),
+                    session
+                        .prepare("UPDATE buckets_bc SET count = count + 1, sum = sum + ? WHERE bucket = ? AND action = ? AND brand_id = ? AND category_id = ?")
+                        .await
+                        .expect("Failed to prepare update_bucket_stats_bc"),
+                ].into_iter().map(BatchStatement::PreparedStatement).collect())
+            },
+
             session,
+
         }
     }
 }
