@@ -1,12 +1,17 @@
 use std::collections::HashSet;
 
+use chrono::DateTime;
+use chrono::Utc;
 use pretty_assertions::assert_eq;
 
 use super::dataset;
+use crate::endpoints::Aggregates;
 use crate::mock;
 use crate::scylla;
 use crate::types;
+use crate::types::Action;
 use crate::types::System;
+use crate::types::TimeRange;
 use crate::utils;
 
 pub struct TestData {
@@ -52,6 +57,23 @@ impl TestData {
         }
     }
 
+    pub async fn create_user_tags_for_timestamp(
+        &self,
+        timestamp: DateTime<Utc>,
+        user_tags_number: usize,
+        action: Option<types::Action>,
+    ) {
+        for _i in 0..user_tags_number {
+            let user_tag = self.dataset.random_user_tag(dataset::UserTagConfig {
+                action,
+                time: Some(timestamp),
+                ..Default::default()
+            });
+            self.scylla_client.register_user_tag(user_tag.clone()).await;
+            self.mock_client.register_user_tag(user_tag.clone()).await;
+        }
+    }
+
     fn vectors_the_same(v1: Vec<types::UserTag>, v2: Vec<types::UserTag>) {
         assert_eq!(v1.len(), v2.len());
 
@@ -85,6 +107,35 @@ impl TestData {
 
         Self::vectors_the_same(mock_profile.buys, scylla_profile.buys);
         Self::vectors_the_same(mock_profile.views, scylla_profile.views);
+    }
+
+    pub async fn compare_aggregates(
+        &self,
+        timerange: TimeRange,
+        action: Action,
+        _aggregates: Aggregates,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+    ) {
+        let time_from = timerange.from;
+        let time_to = timerange.to;
+        let mock_buckets = self
+            .mock_client
+            .select_bucket_stats(time_from, time_to, action, origin, brand_id, category_id)
+            .await;
+        let scylla_buckets = self
+            .scylla_client
+            .select_bucket_stats(time_from, time_to, action, origin, brand_id, category_id)
+            .await;
+        assert_eq!(mock_buckets.len(), scylla_buckets.len());
+        mock_buckets
+            .into_iter()
+            .zip(scylla_buckets)
+            .for_each(|(mock_bucket, scylla_bucket)| {
+                // dbg!(&scylla_bucket);
+                assert_eq!(mock_bucket, scylla_bucket);
+            });
     }
 
     pub async fn clear(&self) {
