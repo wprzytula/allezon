@@ -84,7 +84,7 @@ async fn use_case_2(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Aggregate {
     Count,
     SumPrice,
