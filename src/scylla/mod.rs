@@ -34,7 +34,7 @@ pub struct Session {
 
 #[derive(FromUserType, IntoUserType, Debug)]
 struct ProductInfo {
-    pub product_id: String,
+    pub product_id: i32,
     pub brand_id: String,
     pub category_id: String,
     pub price: i32,
@@ -92,7 +92,7 @@ impl Session {
         session.use_keyspace("allezon", false).await.unwrap();
         session
             .query(
-                "CREATE TYPE IF NOT EXISTS product_info (product_id text, brand_id text, category_id text, price int)",
+                "CREATE TYPE IF NOT EXISTS product_info (product_id int, brand_id text, category_id text, price int)",
                 (),
             )
             .await

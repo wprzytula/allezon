@@ -327,7 +327,7 @@ pub mod tests {
 
     fn default_product_info() -> ProductInfo {
         ProductInfo {
-            product_id: "0123".to_owned(),
+            product_id: 123,
             brand_id: "2137".to_owned(),
             category_id: "42".to_owned(),
             price: 0,

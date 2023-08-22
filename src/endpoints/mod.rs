@@ -433,7 +433,7 @@ mod tests {
                     "action": "VIEW",
                     "origin": "Rawa",
                     "product_info": {
-                        "product_id": "pineapple",
+                        "product_id": 2137,
                         "brand_id": "apple",
                         "category_id": "fruit",
                         "price": 50

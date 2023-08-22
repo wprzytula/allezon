@@ -69,7 +69,7 @@ impl DataSet {
             action,
             origin: self.origins.choose(rng).unwrap().clone(),
             product_info: types::ProductInfo {
-                product_id: random_string(100),
+                product_id: rng.gen(),
                 brand_id: self.brands.choose(rng).unwrap().clone(),
                 category_id: self.categories.choose(rng).unwrap().clone(),
                 price: rng.gen_range(0..1000),
