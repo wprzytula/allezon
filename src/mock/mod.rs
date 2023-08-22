@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::{
-    types::{self, Action, UserProfile, UserTag},
+    types::{self, Action, Bucket, UserProfile, UserTag, UtcMinute},
     utils,
 };
 
@@ -15,7 +15,7 @@ const MAX_TAGS_BY_COOKIE: usize = 200;
 #[derive(Debug)]
 struct SystemData {
     // // For 3rd use case - aggregates.
-    // tags_by_timestamp: BTreeMap<DateTime<Utc>, Vec<UserTag>>,
+    tags_by_timestamp: BTreeMap<DateTime<Utc>, Vec<UserTag>>,
 
     // For 2nd use case - user profiles.
     tags_by_cookie: BTreeMap<String, UserProfileInner>,
@@ -83,7 +83,7 @@ impl System {
     pub fn new() -> Self {
         Self {
             data: RwLock::new(SystemData {
-                // tags_by_timestamp: Default::default(),
+                tags_by_timestamp: Default::default(),
                 tags_by_cookie: Default::default(),
             }),
         }
@@ -95,10 +95,10 @@ impl types::System for System {
     async fn register_user_tag(&self, tag: types::UserTag) {
         let mut data = self.data.write().await;
 
-        // data.tags_by_timestamp
-        //     .entry(tag.time)
-        //     .or_default()
-        //     .push(tag.clone());
+        data.tags_by_timestamp
+            .entry(tag.time)
+            .or_default()
+            .push(tag.clone());
 
         data.tags_by_cookie
             .entry(tag.cookie.clone())
@@ -175,6 +175,131 @@ impl types::System for System {
 
         utils::check_user_profile(&profile, time_from, time_to, limit);
         profile
+    }
+
+    async fn select_bucket_stats(
+        &self,
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        action: Action,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+    ) -> Vec<Bucket> {
+        let time_from = UtcMinute::from(time_from);
+        let time_to = UtcMinute::from(time_to);
+        assert!(time_from < time_to);
+        let read_guard = self.data.read().await;
+        let range = read_guard
+            .tags_by_timestamp
+            .range(time_from.inner()..time_to.inner());
+
+        struct BucketIter<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> {
+            min_curr: UtcMinute,
+            min_to: UtcMinute,
+            it: std::iter::Peekable<It>,
+            action: Action,
+            origin: Option<&'a str>,
+            brand_id: Option<&'a str>,
+            category_id: Option<&'a str>,
+        }
+
+        impl<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> BucketIter<'a, It> {
+            fn new(
+                time_from: UtcMinute,
+                time_to: UtcMinute,
+                it: It,
+                action: Action,
+                origin: Option<&'a str>,
+                brand_id: Option<&'a str>,
+                category_id: Option<&'a str>,
+            ) -> Self {
+                Self {
+                    min_curr: time_from,
+                    min_to: time_to,
+                    it: it.peekable(),
+                    action,
+                    origin,
+                    brand_id,
+                    category_id,
+                }
+            }
+        }
+        impl<'a, It: Iterator<Item = (&'a DateTime<Utc>, &'a Vec<UserTag>)>> Iterator
+            for BucketIter<'a, It>
+        {
+            type Item = Bucket;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                // Find out what bucket we are in
+                let bucket_minute: UtcMinute = self.min_curr;
+
+                // Stop condition
+                if bucket_minute >= self.min_to {
+                    return None;
+                }
+
+                let mut count = 0;
+                let mut sum_price = 0;
+
+                while let Some((&datetime, tags)) = self.it.peek() {
+                    println!(
+                        "datetime: {} min, bucket: {} min.",
+                        datetime.minute(),
+                        bucket_minute.inner().minute()
+                    );
+                    println!("datetime: {}, bucket: {}.", datetime, bucket_minute.inner());
+                    match UtcMinute::from(datetime).cmp(&bucket_minute) {
+                        std::cmp::Ordering::Less => unreachable!("BTreeMap iter invariant!"),
+                        std::cmp::Ordering::Greater => break, // this belongs already to the next bucket
+                        std::cmp::Ordering::Equal => {
+                            for tag in *tags {
+                                if self.action == tag.action
+                                    && self
+                                        .origin
+                                        .map(|origin| origin == tag.origin)
+                                        .unwrap_or(true)
+                                    && self
+                                        .brand_id
+                                        .map(|brand_id| brand_id == tag.product_info.brand_id)
+                                        .unwrap_or(true)
+                                    && self
+                                        .category_id
+                                        .map(|category_id| {
+                                            category_id == tag.product_info.category_id
+                                        })
+                                        .unwrap_or(true)
+                                {
+                                    count += 1;
+                                    sum_price += tag.product_info.price;
+                                }
+                            }
+
+                            // Advance
+                            self.it.next().unwrap();
+                        }
+                    }
+                }
+                self.min_curr = self.min_curr.next();
+
+                Some(Bucket {
+                    minute: bucket_minute,
+                    count,
+                    sum_price,
+                })
+            }
+        }
+
+        BucketIter::new(
+            time_from,
+            time_to,
+            range,
+            action,
+            origin,
+            brand_id,
+            category_id,
+        )
+        .collect()
     }
 
     async fn clear(&self) {

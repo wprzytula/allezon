@@ -34,7 +34,7 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let _ = tracing_subscriber::fmt::try_init();
     let args = Args::parse();
 
     let socket_address = (args.address, args.port)

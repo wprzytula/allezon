@@ -42,6 +42,20 @@ impl Client {
         response.json().await
     }
 
+    pub async fn use_case3(
+        time_from: DateTime<Utc>,
+        time_to: DateTime<Utc>,
+        action: types::Action,
+        origin: Option<&str>,
+        brand_id: Option<&str>,
+        category_id: Option<&str>,
+        aggregates: Aggregates,
+    ) -> Result<types::BucketsResponse, reqwest::Error> {
+        let mut url = format!("https://{}/aggregates/?time_range={}_{}&action=\"{}\"", self.url, time_from, time_to, action);
+
+
+    }
+
     pub async fn clear(&self) {
         let url = format!("http://{}/clear", self.url);
         self.client.post(url).send().await.unwrap();
