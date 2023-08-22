@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::Arc};
 
 use axum::{
-    extract::{Json, Path, Query, State},
+    extract::{rejection::QueryRejection, Json, Path, Query, State},
     routing::{get, post},
     Router,
 };
@@ -354,9 +354,10 @@ impl UseCase3Response {
 #[axum_macros::debug_handler] // <- this provides better error messages
 async fn use_case_3(
     State(system): State<AppState>, // extract state in this handler
-    // params: Result<Query<UseCase3Params>, QueryRejection>, <-- for debug
-    Query(params): Query<UseCase3Params>,
+    params: Result<Query<UseCase3Params>, QueryRejection>, // <-- for debug
+                                    // Query(params): Query<UseCase3Params>,
 ) -> Result<Json<UseCase3Response>, StatusCode> {
+    let Query(params) = params.unwrap();
     let buckets = system
         .select_bucket_stats(
             params.time_range.from,
