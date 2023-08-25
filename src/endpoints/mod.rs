@@ -259,7 +259,7 @@ impl<'de> Deserialize<'de> for UseCase3Params {
 //       ["2022-03-01T00:06:00", "BUY", "Nike", "1500", "4"],
 //       ["2022-03-01T00:07:00", "BUY", "Nike", "1200", "2"]
 // }
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct UseCase3Response {
     /*
     ▪ First column is called "1m_bucket" .
@@ -361,7 +361,8 @@ impl UseCase3Response {
 async fn use_case_3(
     State(system): State<AppState>, // extract state in this handler
     params: Result<Query<UseCase3Params>, QueryRejection>, // <-- for debug
-                                    // Query(params): Query<UseCase3Params>,
+    Json(expected_response): Json<UseCase3Response>,
+    // Query(params): Query<UseCase3Params>,
 ) -> Result<Json<UseCase3Response>, StatusCode> {
     let Query(params) = params.unwrap();
     let buckets = system
@@ -375,7 +376,9 @@ async fn use_case_3(
         )
         .await;
 
-    Ok(Json(UseCase3Response::new(params, buckets)))
+    let response = UseCase3Response::new(params, buckets);
+    assert_eq!(response, expected_response);
+    Ok(Json(response))
 }
 
 #[cfg(test)]
