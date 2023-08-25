@@ -320,8 +320,14 @@ impl UseCase3Response {
                      count,
                      sum_price,
                  }| {
-                    let mut columns =
-                        vec![minute.inner().naive_utc().to_string(), action.to_string()];
+                    let mut columns = vec![
+                        minute
+                            .inner()
+                            .naive_utc()
+                            .format("%Y-%m-%dT%H:%M:%S")
+                            .to_string(),
+                        action.to_string(),
+                    ];
 
                     // ▪ Filter columns are in the following order: "action", "origin", "brand_id", "category_id".
                     if let Some(origin) = origin.clone() {
