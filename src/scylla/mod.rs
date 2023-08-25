@@ -6,7 +6,7 @@ use scylla::frame::value::Counter;
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::types::{Action, Bucket, UtcMinute};
 use crate::{types, utils};
@@ -317,7 +317,7 @@ impl Session {
         }
         .unwrap();
 
-        dbg!(&query_result.rows);
+        trace!("Got bucket rows: {:#?}, ", query_result.rows);
 
         // Ugly as hell, but lets us preserve unified match above
         // (no differentiating between Counter and BigInt returned).
