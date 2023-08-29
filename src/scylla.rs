@@ -137,7 +137,7 @@ impl Session {
                 .await
                 .expect("Failed to prepare insert_user_tag"),
             select_last_tags_by_cookie: session
-                .prepare("SELECT time, tag FROM user_tags WHERE cookie = ? AND action = ? AND time >= ? AND time <= ? ORDER BY time DESC LIMIT 200")
+                .prepare("SELECT time, tag FROM user_tags WHERE cookie = ? AND action = ? AND time >= ? AND time < ? ORDER BY time DESC LIMIT 200")
                 .await
                 .expect("Failed to prepare select_last_tags_by_cookie"),
             delete_old_tags_by_cookie: session

@@ -26,6 +26,6 @@ fn check_user_tags_vector(
 
     for user_tag in user_tags {
         assert!(user_tag.time >= time_from);
-        assert!(user_tag.time <= time_to);
+        assert!(user_tag.time < time_to);
     }
 }
