@@ -6,6 +6,7 @@ use scylla::frame::value::Counter;
 use scylla::macros::{FromUserType, IntoUserType};
 use scylla::prepared_statement::PreparedStatement;
 use scylla::IntoTypedRows;
+use scylla::transport::query_result::FirstRowError;
 use tracing::{debug, trace};
 
 use crate::types::{Action, Bucket, UtcMinute};
@@ -321,25 +322,34 @@ impl Session {
 
         // Ugly as hell, but lets us preserve unified match above
         // (no differentiating between Counter and BigInt returned).
-        let row = query_result.first_row().unwrap();
-        let mut cols_iter = row.columns.into_iter();
-        let count_cql = cols_iter.next().unwrap().unwrap();
-        let sum_cql = cols_iter.next().unwrap().unwrap();
-        assert!(cols_iter.next().is_none());
-        let (count, sum) = match (count_cql, sum_cql) {
-            // Counter is returned for non-aggregate queries
-            (CqlValue::Counter(Counter(count)), CqlValue::Counter(Counter(sum))) => (count, sum),
+        match query_result.first_row() {
+            Err(FirstRowError::RowsEmpty) => Bucket {
+                minute: bucket.into(),
+                count: 0,
+                sum_price: 0,
+            },
+            Err(_) => panic!("Failed to get first row"),
+            Ok(row) => {
+                let mut cols_iter = row.columns.into_iter();
+                let count_cql = cols_iter.next().unwrap().unwrap();
+                let sum_cql = cols_iter.next().unwrap().unwrap();
+                assert!(cols_iter.next().is_none());
+                let (count, sum) = match (count_cql, sum_cql) {
+                    // Counter is returned for non-aggregate queries
+                    (CqlValue::Counter(Counter(count)), CqlValue::Counter(Counter(sum))) => (count, sum),
 
-            // BigInt is returned for aggregate queries
-            (CqlValue::BigInt(count), CqlValue::BigInt(sum)) => (count, sum),
+                    // BigInt is returned for aggregate queries
+                    (CqlValue::BigInt(count), CqlValue::BigInt(sum)) => (count, sum),
 
-            (count_cql, sum_cql) => panic!("Unexpected CqlVal: ({:?}, {:?})", count_cql, sum_cql),
-        };
+                    (count_cql, sum_cql) => panic!("Unexpected CqlVal: ({:?}, {:?})", count_cql, sum_cql),
+                };
 
-        Bucket {
-            minute: bucket.into(),
-            count: count,
-            sum_price: sum,
+                Bucket {
+                    minute: bucket.into(),
+                    count: count,
+                    sum_price: sum,
+                }
+            },
         }
     }
 }
