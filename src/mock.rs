@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+use tracing::trace;
 
 use crate::{
     types::{self, Action, Bucket, UserProfile, UserTag, UtcMinute},
@@ -243,12 +244,12 @@ impl types::System for System {
                 let mut sum_price = 0;
 
                 while let Some((&datetime, tags)) = self.it.peek() {
-                    println!(
+                    trace!(
                         "datetime: {} min, bucket: {} min.",
                         datetime.minute(),
                         bucket_minute.inner().minute()
                     );
-                    println!("datetime: {}, bucket: {}.", datetime, bucket_minute.inner());
+                    trace!("datetime: {}, bucket: {}.", datetime, bucket_minute.inner());
                     match UtcMinute::from(datetime).cmp(&bucket_minute) {
                         std::cmp::Ordering::Less => unreachable!("BTreeMap iter invariant!"),
                         std::cmp::Ordering::Greater => break, // this belongs already to the next bucket
@@ -327,7 +328,7 @@ pub mod tests {
 
     fn default_product_info() -> ProductInfo {
         ProductInfo {
-            product_id: "0123".to_owned(),
+            product_id: 123,
             brand_id: "2137".to_owned(),
             category_id: "42".to_owned(),
             price: 0,

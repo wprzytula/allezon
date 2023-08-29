@@ -49,7 +49,7 @@ impl Display for Action {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq, Hash))]
 pub struct ProductInfo {
-    pub product_id: String,
+    pub product_id: i32,
     pub brand_id: String,
     pub category_id: String,
     pub price: i32,
@@ -229,7 +229,7 @@ mod tests {
             "action": "VIEW",
             "origin": "Rawa",
             "product_info": {
-                "product_id": "pineapple",
+                "product_id": 2137,
                 "brand_id": "apple",
                 "category_id": "fruit",
                 "price": 50
