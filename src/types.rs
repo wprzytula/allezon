@@ -167,8 +167,8 @@ pub struct UserProfile {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bucket {
     pub minute: UtcMinute,
-    pub count: i32,
-    pub sum_price: i32,
+    pub count: i64,
+    pub sum_price: i64,
 }
 
 #[async_trait]

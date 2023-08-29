@@ -240,8 +240,8 @@ impl types::System for System {
                     return None;
                 }
 
-                let mut count = 0;
-                let mut sum_price = 0;
+                let mut count: i64 = 0;
+                let mut sum_price: i64 = 0;
 
                 while let Some((&datetime, tags)) = self.it.peek() {
                     trace!(
@@ -272,7 +272,7 @@ impl types::System for System {
                                         .unwrap_or(true)
                                 {
                                     count += 1;
-                                    sum_price += tag.product_info.price;
+                                    sum_price += tag.product_info.price as i64;
                                 }
                             }
 

@@ -338,8 +338,8 @@ impl Session {
 
         Bucket {
             minute: bucket.into(),
-            count: count as i32,
-            sum_price: sum as i32,
+            count: count,
+            sum_price: sum,
         }
     }
 }
