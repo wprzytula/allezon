@@ -185,7 +185,7 @@ impl Session {
                         .await
                         .expect("Failed to prepare update_bucket_stats_obc"),
                     session
-                        .prepare("UPDATE buckets_co SET count = count + 1, sum = sum + ? WHERE bucket = ? AND action = ? AND origin = ? AND category_id = ?")
+                        .prepare("UPDATE buckets_co SET count = count + 1, sum = sum + ? WHERE bucket = ? AND action = ? AND category_id = ? AND origin = ?")
                         .await
                         .expect("Failed to prepare update_bucket_stats_co"),
                     session
