@@ -56,6 +56,7 @@ async fn use_case_2(
     State(session): State<AppState>, // extract state in this handler
     Path(cookie): Path<String>,
     Query(params): Query<UseCase2Params>,
+    Json(expected_response): Json<UserProfile>,
 ) -> Result<Json<UserProfile>, (StatusCode, String)> {
     log::info!("Getting user profile");
 
@@ -76,11 +77,12 @@ async fn use_case_2(
         }
     }
 
-    let user_profile = session
+    let response = session
         .last_tags_by_cookie(&cookie, time_from, time_to, limit.unwrap_or(200) as usize)
         .await;
 
-    Ok(Json(user_profile))
+    assert_eq!(response, expected_response);
+    Ok(Json(response))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

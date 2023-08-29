@@ -6,8 +6,8 @@ use chrono::{DateTime, DurationRound, NaiveDateTime, Utc};
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(test, derive( Hash))]
 pub struct UserTag {
     pub time: DateTime<Utc>, // format: "2022-03-22T12:15:00.000Z"
     //   millisecond precision
@@ -46,8 +46,8 @@ impl Display for Action {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
+#[derive(PartialEq, Eq, Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(test, derive(Hash))]
 pub struct ProductInfo {
     pub product_id: i32,
     pub brand_id: String,
@@ -156,8 +156,8 @@ impl Serialize for TimeRange {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(PartialEq, Eq, Hash))]
+#[derive(PartialEq, Eq, Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(Hash))]
 pub struct UserProfile {
     pub cookie: String,
     pub views: Vec<UserTag>,
