@@ -88,8 +88,8 @@ impl UserTag {
 }
 
 impl Session {
-    pub async fn prepare(session: &scylla::Session) {
-        session.query("CREATE KEYSPACE IF NOT EXISTS allezon WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }", ()).await.unwrap();
+    pub async fn prepare(session: &scylla::Session, replication_factor: u8) {
+        session.query(format!("CREATE KEYSPACE IF NOT EXISTS allezon WITH REPLICATION = {{ 'class' : 'SimpleStrategy', 'replication_factor' : {} }}", replication_factor), ()).await.unwrap();
         session.use_keyspace("allezon", false).await.unwrap();
         session
             .query(
@@ -122,14 +122,14 @@ impl Session {
             .unwrap();
     }
 
-    pub async fn new(uri: &str) -> Self {
+    pub async fn new(uri: &str, replication_factor: u8) -> Self {
         let session = scylla::SessionBuilder::new()
             .known_node(uri)
             .build()
             .await
             .expect("Failed to create Scylla session");
 
-        Self::prepare(&session).await;
+        Self::prepare(&session, replication_factor).await;
 
         Self {
             insert_user_tag: session

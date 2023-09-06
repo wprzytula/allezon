@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::net::ToSocketAddrs;
+use std::{net::ToSocketAddrs, env};
 use tracing::log;
 
 mod endpoints;
@@ -18,8 +18,11 @@ struct Args {
     #[arg(short, long, default_value_t = 8080)]
     port: u16,
 
-    #[arg(short, long, default_value = "127.0.0.1:9042")]
-    scylla_uri: String,
+    #[arg(short, long)]
+    scylla_uri: Option<String>,
+
+    #[arg(short, long, default_value_t = 3)]
+    replication_factor: u8,
 
     #[arg(short, long, action)]
     mock: bool,
@@ -46,8 +49,9 @@ async fn main() {
     let router: axum::Router;
 
     if !args.mock {
-        router = endpoints::build_router(scylla::Session::new(&args.scylla_uri).await);
-        log::info!("Connected to Scylla on {}", args.scylla_uri);
+        let scylla_uri = args.scylla_uri.unwrap_or_else(|| env::var("SCYLLA_URI").expect("SCYLLA_URI env variable is not set"));
+        router = endpoints::build_router(scylla::Session::new(&scylla_uri, args.replication_factor).await);
+        log::info!("Connected to Scylla on {}", scylla_uri);
     } else {
         router = endpoints::build_router(mock::System::new());
         log::info!("Starting in mock mode");

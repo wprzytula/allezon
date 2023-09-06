@@ -23,7 +23,7 @@ pub struct TestData {
 impl TestData {
     pub async fn new(scylla_url: &str) -> Self {
         Self {
-            scylla_client: scylla::Session::new(scylla_url).await,
+            scylla_client: scylla::Session::new(scylla_url, 3).await,
             mock_client: mock::System::new(),
             dataset: dataset::DataSet::new(),
         }
