@@ -37,7 +37,8 @@ async fn use_case_1(
     Query(_params): Query<()>,      // this asserts that the params are empty
     Json(tag): Json<UserTag>,
 ) -> Result<StatusCode, StatusCode> {
-    log::info!("Registering user tag");
+    log::debug!("Registering user tag");
+
     system.register_user_tag(tag).await;
 
     Ok(StatusCode::NO_CONTENT)
@@ -58,7 +59,7 @@ async fn use_case_2(
     Query(params): Query<UseCase2Params>,
     Json(expected_response): Json<UserProfile>,
 ) -> Result<Json<UserProfile>, (StatusCode, String)> {
-    log::info!("Getting user profile");
+    log::debug!("Getting user profile");
 
     let UseCase2Params {
         time_range: TimeRange {
@@ -81,7 +82,9 @@ async fn use_case_2(
         .last_tags_by_cookie(&cookie, time_from, time_to, limit.unwrap_or(200) as usize)
         .await;
 
-    assert_eq!(response, expected_response);
+    if response != expected_response {
+        log::error!("Invalid user profiles response: {:?} != {:?}", response, expected_response);
+    }
     Ok(Json(response))
 }
 
@@ -366,6 +369,8 @@ async fn use_case_3(
     Json(expected_response): Json<UseCase3Response>,
     // Query(params): Query<UseCase3Params>,
 ) -> Result<Json<UseCase3Response>, StatusCode> {
+    log::debug!("Getting aggregates");
+
     let Query(params) = params.unwrap();
     let buckets = system
         .select_bucket_stats(
@@ -379,7 +384,10 @@ async fn use_case_3(
         .await;
 
     let response = UseCase3Response::new(params, buckets);
-    assert_eq!(response, expected_response);
+
+    if response != expected_response {
+        log::error!("Invalid aggregates response: {:?} != {:?}", response, expected_response);
+    }
     Ok(Json(response))
 }
 
